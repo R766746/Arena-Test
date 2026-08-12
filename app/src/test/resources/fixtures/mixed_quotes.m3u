@@ -1,0 +1,11 @@
+#EXTM3U url-tvg="http://epg.example/xmltv.xml" user-agent="NOVATest/1.0"
+#EXTINF:-1 tvg-id="cnn.us" tvg-name="CNN" tvg-logo="http://logo/cnn.png" tvg-chno="101" group-title="News" catchup="default" catchup-days="7",CNN HD
+http://cdn.example/live/cnn.ts
+#EXTINF:-1 tvg-id='bbc.uk' tvg-name='BBC' group-title='News',BBC World
+http://cdn.example/live/bbc.m3u8
+#EXTINF:-1 tvg-id=fox.us tvg-chno=103 group-title=News,Fox News
+http://cdn.example/live/fox.ts
+#EXTVLCOPT:http-user-agent=VLC/3.0
+#EXTVLCOPT:http-referrer=http://portal.example/
+#EXTINF:-1 tvg-id="espn.us" group-title="Sports",ESPN
+http://cdn.example/live/espn.ts
