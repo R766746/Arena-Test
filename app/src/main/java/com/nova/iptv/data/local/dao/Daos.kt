@@ -105,10 +105,13 @@ interface ChannelDao {
     @Query("UPDATE channels SET locked = :locked WHERE id = :id")
     suspend fun setLocked(id: String, locked: Boolean)
 
+    @Query("DELETE FROM channels WHERE playlistId = :playlistId AND id NOT IN (:keptIds)")
+    suspend fun deleteOrphans(playlistId: String, keptIds: List<String>)
+
     @Transaction
     suspend fun replacePlaylistChannels(playlistId: String, items: List<ChannelEntity>) {
-        deleteByPlaylist(playlistId)
-        if (items.isNotEmpty()) upsertAll(items)
+        upsertAll(items)
+        deleteOrphans(playlistId, items.map { it.id })
     }
 }
 
@@ -214,6 +217,15 @@ interface VodDao {
 
     @Query("UPDATE vod SET localRating = :rating WHERE id = :id")
     suspend fun setRating(id: String, rating: Float)
+
+    @Query("DELETE FROM vod WHERE playlistId = :playlistId AND id NOT IN (:keptIds)")
+    suspend fun deleteOrphans(playlistId: String, keptIds: List<String>)
+
+    @Transaction
+    suspend fun syncVod(playlistId: String, items: List<VodEntity>) {
+        upsertAll(items)
+        deleteOrphans(playlistId, items.map { it.id })
+    }
 
     @Query("SELECT DISTINCT genresCsv FROM vod WHERE playlistId = :playlistId AND kind = :kind")
     suspend fun genreRows(playlistId: String, kind: String): List<String>

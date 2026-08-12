@@ -21,6 +21,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,11 +40,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.C
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.nova.iptv.R
 import com.nova.iptv.core.util.TimeFmt
+import com.nova.iptv.data.player.PlayerManager
 import com.nova.iptv.domain.model.AspectMode
 import com.nova.iptv.nav.PlayTarget
 import com.nova.iptv.nav.digitFromKey
@@ -64,6 +69,7 @@ fun PlayerRoute(
     LaunchedEffect(target.id, target.kind, target.url) { vm.bind(target) }
     PlayerScreen(
         state = state,
+        playerManager = vm.playerManager,
         playerView = {
             AndroidView(
                 factory = { ctx ->
@@ -141,6 +147,7 @@ fun PlayerRoute(
 @Composable
 fun PlayerScreen(
     state: PlayerUiState,
+    playerManager: PlayerManager,
     playerView: @Composable () -> Unit,
     onKey: (Int, Boolean) -> Boolean,
     onBack: () -> Unit,
@@ -153,6 +160,12 @@ fun PlayerScreen(
     onCloseSheet: () -> Unit,
 ) {
     val colors = LocalNovaPalette.current
+    var subMenu by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(state.sheet) {
+        if (!state.sheet) subMenu = null
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -254,14 +267,55 @@ fun PlayerScreen(
         AnimatedVisibility(state.sheet, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.CenterEnd)) {
             GlassPanel(Modifier.width(280.dp).fillMaxHeight().padding(12.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("OPTIONS", color = colors.muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
-                    FocusButton(label = stringResource(R.string.overlay_favorite), onClick = onFavorite, modifier = Modifier.fillMaxWidth())
-                    FocusButton(label = stringResource(R.string.overlay_multiview), onClick = onMulti, modifier = Modifier.fillMaxWidth())
-                    FocusButton(label = stringResource(R.string.overlay_guide), onClick = onGuide, modifier = Modifier.fillMaxWidth())
-                    FocusButton(label = stringResource(R.string.overlay_record), onClick = onRecord, modifier = Modifier.fillMaxWidth())
-                    FocusButton(label = stringResource(R.string.overlay_audio), onClick = onCloseSheet, modifier = Modifier.fillMaxWidth())
-                    FocusButton(label = stringResource(R.string.overlay_subtitles), onClick = onCloseSheet, modifier = Modifier.fillMaxWidth())
-                    FocusButton(label = stringResource(R.string.overlay_aspect), onClick = onCloseSheet, modifier = Modifier.fillMaxWidth())
+                    if (subMenu == null) {
+                        Text("OPTIONS", color = colors.muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
+                        FocusButton(label = stringResource(R.string.overlay_favorite), onClick = onFavorite, modifier = Modifier.fillMaxWidth())
+                        FocusButton(label = stringResource(R.string.overlay_multiview), onClick = onMulti, modifier = Modifier.fillMaxWidth())
+                        FocusButton(label = stringResource(R.string.overlay_guide), onClick = onGuide, modifier = Modifier.fillMaxWidth())
+                        FocusButton(label = stringResource(R.string.overlay_record), onClick = onRecord, modifier = Modifier.fillMaxWidth())
+                        FocusButton(label = stringResource(R.string.overlay_audio), onClick = { subMenu = "audio" }, modifier = Modifier.fillMaxWidth())
+                        FocusButton(label = stringResource(R.string.overlay_subtitles), onClick = { subMenu = "sub" }, modifier = Modifier.fillMaxWidth())
+                        FocusButton(label = stringResource(R.string.overlay_aspect), onClick = onCloseSheet, modifier = Modifier.fillMaxWidth())
+                    } else {
+                        val isAudio = subMenu == "audio"
+                        Text(if (isAudio) "AUDIO" else "SUBTITLES", color = colors.muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
+                        
+                        val type = if (isAudio) C.TRACK_TYPE_AUDIO else C.TRACK_TYPE_TEXT
+                        val groups = playerManager.currentTracks()?.groups ?: emptyList()
+                        
+                        if (!isAudio) {
+                            FocusButton(
+                                label = "Off",
+                                onClick = {
+                                    playerManager.clearSubtitle()
+                                    onCloseSheet()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        groups.forEachIndexed { gIdx, group ->
+                            if (group.type == type) {
+                                for (tIdx in 0 until group.length) {
+                                    val format = group.getTrackFormat(tIdx)
+                                    val name = format.label ?: format.language ?: "Track ${tIdx + 1}"
+                                    val selected = group.isTrackSelected(tIdx)
+                                    FocusButton(
+                                        label = if (selected) "● $name" else name,
+                                        onClick = {
+                                            if (isAudio) playerManager.selectAudio(gIdx, tIdx)
+                                            else playerManager.selectSubtitle(gIdx, tIdx)
+                                            onCloseSheet()
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+                        
+                        Spacer(Modifier.height(8.dp))
+                        FocusButton(label = "Back", onClick = { subMenu = null }, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
         }

@@ -43,6 +43,7 @@ class PlayerManager @Inject constructor(
     private var main: ExoPlayer? = null
     private var preview: ExoPlayer? = null
     private val multi = mutableListOf<ExoPlayer>()
+    private var mainHttpFactory: OkHttpDataSource.Factory? = null
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
@@ -85,6 +86,7 @@ class PlayerManager @Inject constructor(
         _error.value = null
         _target.value = target
         val player = mainPlayer()
+        mainHttpFactory?.setDefaultRequestProperties(headers)
         applyAspect(player)
         val item = mediaItem(target.url.orEmpty(), target.title.orEmpty(), headers)
         player.setMediaItem(item)
@@ -94,8 +96,9 @@ class PlayerManager @Inject constructor(
     }
 
     fun zap(url: String, title: String, headers: Map<String, String>) {
-        val player = mainPlayer()
         _error.value = null
+        val player = mainPlayer()
+        mainHttpFactory?.setDefaultRequestProperties(headers)
         val item = mediaItem(url, title, headers)
         player.setMediaItem(item)
         player.prepare()
@@ -205,6 +208,26 @@ class PlayerManager @Inject constructor(
             .build()
     }
 
+    fun selectSubtitle(groupIndex: Int, trackIndex: Int) {
+        val player = main ?: return
+        val groups = player.currentTracks.groups
+        if (groupIndex !in groups.indices) return
+        val group = groups[groupIndex]
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setOverrideForType(
+                androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, trackIndex),
+            )
+            .build()
+    }
+
+    fun clearSubtitle() {
+        val player = main ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            .build()
+    }
+
     fun openExternal(url: String, packageName: String?): Boolean {
         return runCatching {
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -223,8 +246,12 @@ class PlayerManager @Inject constructor(
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(min, max, play, rebuffer)
             .build()
-        val http = OkHttpDataSource.Factory(okHttp)
-            .setUserAgent(settings.settings.value.let { "NOVA-IPTV" })
+        val http = if (!preview) {
+            mainHttpFactory ?: OkHttpDataSource.Factory(okHttp).also { mainHttpFactory = it }
+        } else {
+            OkHttpDataSource.Factory(okHttp)
+        }
+        http.setUserAgent("NOVA-IPTV")
         val mediaSourceFactory = DefaultMediaSourceFactory(context).setDataSourceFactory(http)
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)

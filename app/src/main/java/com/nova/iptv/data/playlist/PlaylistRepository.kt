@@ -163,13 +163,15 @@ class PlaylistRepositoryImpl @Inject constructor(
         if (vod.isNotEmpty()) {
             val prevVod = db.vod().byKind(playlist.id, "MOVIE") + db.vod().byKind(playlist.id, "SERIES")
             val keep = prevVod.associateBy { it.id }
-            db.vod().deleteByPlaylist(playlist.id)
-            db.vod().upsertAll(
-                vod.map { v ->
-                    val p = keep[v.id]
-                    VodEntity.from(v).copy(watchlist = p?.watchlist == true, localRating = p?.localRating ?: 0f)
-                },
-            )
+            val mergedVod = vod.map { v ->
+                val p = keep[v.id]
+                VodEntity.from(v).copy(
+                    pk = p?.pk ?: 0,
+                    watchlist = p?.watchlist == true,
+                    localRating = p?.localRating ?: 0f,
+                )
+            }
+            db.vod().syncVod(playlist.id, mergedVod)
         }
         if (episodes.isNotEmpty()) {
             episodes.groupBy { it.seriesId }.forEach { (sid, eps) ->
