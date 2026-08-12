@@ -143,8 +143,8 @@ fun AddPlaylistRoute(
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.padding(horizontal = 28.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FocusButton(stringResource(R.string.first_run_showcase)) { vm.showcase(onDone) }
-                    FocusButton(stringResource(R.string.action_cancel), onBack)
+                    FocusButton(label = stringResource(R.string.first_run_showcase), onClick = { vm.showcase(onDone) })
+                    FocusButton(label = stringResource(R.string.action_cancel), onClick = onBack)
                 }
                 Text(stringResource(R.string.first_run_legal), color = colors.muted, fontSize = 12.sp, modifier = Modifier.padding(28.dp))
             }
@@ -207,8 +207,8 @@ private fun M3uForm(vm: AddPlaylistViewModel, onDone: () -> Unit, onBack: () -> 
         Field(stringResource(R.string.field_epg_url), epg) { epg = it }
         Field(stringResource(R.string.field_user_agent), ua) { ua = it }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusButton(stringResource(R.string.action_import)) { vm.importM3u(name, url, epg, ua, onDone) }
-            FocusButton(stringResource(R.string.action_cancel), onBack)
+            FocusButton(label = stringResource(R.string.action_import), onClick = { vm.importM3u(name, url, epg, ua, onDone) })
+            FocusButton(label = stringResource(R.string.action_cancel), onClick = onBack)
         }
     }
 }
@@ -225,8 +225,8 @@ private fun XtreamForm(vm: AddPlaylistViewModel, onDone: () -> Unit, onBack: () 
         Field(stringResource(R.string.field_username), user) { user = it }
         Field(stringResource(R.string.field_password), pass) { pass = it }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusButton(stringResource(R.string.action_import)) { vm.importXtream(name, portal, user, pass, onDone) }
-            FocusButton(stringResource(R.string.action_cancel), onBack)
+            FocusButton(label = stringResource(R.string.action_import), onClick = { vm.importXtream(name, portal, user, pass, onDone) })
+            FocusButton(label = stringResource(R.string.action_cancel), onClick = onBack)
         }
     }
 }

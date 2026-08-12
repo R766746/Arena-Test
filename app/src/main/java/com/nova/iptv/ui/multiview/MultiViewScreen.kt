@@ -115,12 +115,12 @@ fun MultiViewRoute(
         NovaTopBar(settings.clock24h) {
             Row {
                 listOf(2, 4, 9).forEach { n ->
-                    FocusButton("${n}-up") {
+                    FocusButton(label = "${n}-up", onClick = {
                         if (n == 9 && LowRam.isLowRam) {
                             warning = true
                             layout = 4
                         } else layout = n
-                    }
+                    })
                 }
             }
         }
@@ -184,13 +184,13 @@ fun MultiViewRoute(
                 Column {
                     Text(stringResource(R.string.multiview_pick), color = colors.onBackground, fontSize = 18.sp)
                     favs.forEach { ch ->
-                        FocusButton(ch.name, {
+                        FocusButton(label = ch.name, onClick = {
                             // Swap this tile by rebuilding layout list: user picks favorite
                             pickerFor = -1
                             onFullscreen(PlayTarget.live(ch.id, ch.name, ch.number, ch.streamUrl))
-                        }, Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                        }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
                     }
-                    FocusButton(stringResource(R.string.action_cancel)) { pickerFor = -1 }
+                    FocusButton(label = stringResource(R.string.action_cancel), onClick = { pickerFor = -1 })
                 }
             }
         }

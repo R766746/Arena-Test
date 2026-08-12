@@ -60,7 +60,11 @@ class EpgRefreshWorker @AssistedInject constructor(
             .setSmallIcon(android.R.drawable.ic_menu_recent_history)
             .setOngoing(true)
             .build()
-        return ForegroundInfo(71, n)
+        return if (android.os.Build.VERSION.SDK_INT >= 34) {
+            ForegroundInfo(71, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(71, n)
+        }
     }
 
     companion object {

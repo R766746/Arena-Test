@@ -87,7 +87,7 @@ fun NovaNav(vm: RootViewModel = hiltViewModel()) {
                 .background(novaColors().background)
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
-                    val code = event.nativeKeyCode
+                    val code = event.nativeKeyEvent.keyCode
                     val playing = route?.startsWith("player") == true
                     when (code) {
                         KeyEvent.KEYCODE_GUIDE -> {

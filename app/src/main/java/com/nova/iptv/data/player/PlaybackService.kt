@@ -40,7 +40,11 @@ class PlaybackService : MediaSessionService() {
             .setSessionActivity(pi)
             .build()
         if (!isLeanbackOnly()) {
-            startForeground(NOTIF, buildNotification())
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIF, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIF, buildNotification())
+            }
         }
     }
 

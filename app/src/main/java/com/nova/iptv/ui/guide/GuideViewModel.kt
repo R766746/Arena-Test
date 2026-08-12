@@ -105,4 +105,8 @@ class GuideViewModel @Inject constructor(
     fun toggleFavorite() = viewModelScope.launch {
         selectedCh.value?.let { playlists.toggleFavorite(it.id) }
     }
+
+    fun remind(channel: Channel, program: Program) {
+        ReminderWorker.schedule(context, program.startMs, program.title, channel.name)
+    }
 }

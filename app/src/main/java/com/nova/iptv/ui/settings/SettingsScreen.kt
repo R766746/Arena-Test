@@ -58,6 +58,7 @@ import com.nova.iptv.domain.model.AppSettings
 import com.nova.iptv.domain.model.AspectMode
 import com.nova.iptv.domain.model.BufferSize
 import com.nova.iptv.domain.model.DiagnosticsSnapshot
+import kotlinx.coroutines.flow.first
 import com.nova.iptv.domain.model.EpgRowHeight
 import com.nova.iptv.domain.model.ListStyle
 import com.nova.iptv.domain.model.Playlist
@@ -110,7 +111,9 @@ class SettingsViewModel @Inject constructor(
 
     suspend fun diagnostics(): DiagnosticsSnapshot {
         val rt = Runtime.getRuntime()
-        val size = playlistsFlow.value.sumOf { kotlinx.coroutines.flow.first(playlists.channels(it.id)).size }
+        val size = playlistsFlow.value.sumOf { pl ->
+            playlists.channels(pl.id).first().size.toInt()
+        }
         return DiagnosticsSnapshot(
             heapUsedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024),
             heapMaxMb = rt.maxMemory() / (1024 * 1024),
@@ -229,7 +232,7 @@ fun SettingsScreen(
                             CycleRow("Timeline hours", listOf(2, 4, 6, 12), settings.epgHours) { onUpdate { s -> s.copy(epgHours = it) } }
                             CycleRow("Past days", listOf(1, 2, 3, 7), settings.epgPastDays) { onUpdate { s -> s.copy(epgPastDays = it) } }
                             CycleRow("Time shift (h)", listOf(-6, -3, 0, 1, 3, 6), settings.epgTimeShiftHours) { onUpdate { s -> s.copy(epgTimeShiftHours = it) } }
-                            FocusButton("Refresh EPG now") { onEpgNow(ctx) }
+                            FocusButton(label = "Refresh EPG now", onClick = { onEpgNow(ctx) })
                         }
                         SettingsSection.APPEARANCE -> {
                             CycleRow("Theme", ThemeName.entries.toList(), settings.theme) { onUpdate { s -> s.copy(theme = it) } }
@@ -270,20 +273,20 @@ fun SettingsScreen(
                         }
                         SettingsSection.PARENTAL -> {
                             ToggleRow("Enable PIN", settings.parentalEnabled) { onUpdate { s -> s.copy(parentalEnabled = it) } }
-                            FocusButton("Set PIN 0000") { onPin("0000") }
+                            FocusButton(label = "Set PIN 0000", onClick = { onPin("0000") })
                             ToggleRow("Lock settings", settings.lockSettings) { onUpdate { s -> s.copy(lockSettings = it) } }
                         }
                         SettingsSection.RECORDINGS -> {
-                            FocusButton(stringResource(R.string.rec_pick_folder)) { tree.launch(null) }
+                            FocusButton(label = stringResource(R.string.rec_pick_folder), onClick = { tree.launch(null) })
                             CycleRow("Padding (min)", listOf(0, 1, 3, 5, 10), settings.recPaddingMin) { onUpdate { s -> s.copy(recPaddingMin = it) } }
                             ToggleRow("Delete watched", settings.recDeleteWatched) { onUpdate { s -> s.copy(recDeleteWatched = it) } }
                             Text(stringResource(R.string.rec_quality_note), color = colors.muted, fontSize = 13.sp)
                         }
                         SettingsSection.GENERAL -> {
                             CycleRow("Startup", StartupMode.entries.toList(), settings.startupMode) { onUpdate { s -> s.copy(startupMode = it) } }
-                            FocusButton(stringResource(R.string.backup_export)) { createDoc.launch("nova-backup.json") }
-                            FocusButton(stringResource(R.string.backup_import)) { openDoc.launch(arrayOf("application/json", "*/*")) }
-                            FocusButton(stringResource(R.string.reset_settings), onReset)
+                            FocusButton(label = stringResource(R.string.backup_export), onClick = { createDoc.launch("nova-backup.json") })
+                            FocusButton(label = stringResource(R.string.backup_import), onClick = { openDoc.launch(arrayOf("application/json", "*/*")) })
+                            FocusButton(label = stringResource(R.string.reset_settings), onClick = onReset)
                         }
                         SettingsSection.ABOUT -> {
                             Text(stringResource(R.string.about_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE), color = colors.onBackground, fontSize = 16.sp)
@@ -294,7 +297,7 @@ fun SettingsScreen(
                             val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
                             Text("RAM ${formatBytes(mi.totalMem)}  lowRam=${LowRam.isLowRam}", color = colors.muted, fontSize = 13.sp)
                             Spacer(Modifier.height(12.dp))
-                            FocusButton(stringResource(R.string.about_diagnostics), onDiagnostics)
+                            FocusButton(label = stringResource(R.string.about_diagnostics), onClick = onDiagnostics)
                         }
                     }
                 }
@@ -325,7 +328,7 @@ private fun PlaylistsPane(
     onUpdate: ((AppSettings) -> AppSettings) -> Unit,
 ) {
     val colors = LocalNovaPalette.current
-    FocusButton(stringResource(R.string.playlists_add), onAdd)
+    FocusButton(label = stringResource(R.string.playlists_add), onClick = onAdd)
     Spacer(Modifier.height(12.dp))
     playlists.forEach { pl ->
         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -333,10 +336,10 @@ private fun PlaylistsPane(
                 Text(pl.name, color = colors.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 Text("${pl.type}  ·  ${pl.url.take(48)}", color = colors.muted, fontSize = 12.sp)
             }
-            FocusButton(stringResource(R.string.playlists_update_now)) { onRefresh(pl) }
+            FocusButton(label = stringResource(R.string.playlists_update_now), onClick = { onRefresh(pl) })
             Spacer(Modifier.width(8.dp))
             if (pl.type != PlaylistType.DEMO) {
-                FocusButton(stringResource(R.string.playlists_delete)) { onDelete(pl.id) }
+                FocusButton(label = stringResource(R.string.playlists_delete), onClick = { onDelete(pl.id) })
             }
         }
     }
@@ -387,6 +390,6 @@ fun DiagnosticsRoute(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()
             Text("lowRam=${s.lowRam}", color = colors.onBackground, fontSize = 14.sp)
         }
         Spacer(Modifier.height(16.dp))
-        FocusButton("Back", onBack)
+        FocusButton(label = "Back", onClick = onBack)
     }
 }

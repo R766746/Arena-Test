@@ -52,6 +52,7 @@ import com.nova.iptv.ui.components.PosterCard
 import com.nova.iptv.ui.theme.LocalNovaPalette
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -89,8 +90,8 @@ class DetailViewModel @Inject constructor(
         viewModelScope.launch {
             val vod = repo.getVod(id) ?: return@launch
             item = vod
-            episodes = kotlinx.coroutines.flow.first(repo.episodes(id))
-            val all = kotlinx.coroutines.flow.first(repo.vod(vod.playlistId, vod.kind.name))
+            episodes = repo.episodes(id).first()
+            val all = repo.vod(vod.playlistId, vod.kind.name).first()
             similar = all.filter { it.id != id && it.genres.any { g -> g in vod.genres } }.take(8)
         }
     }
@@ -207,13 +208,13 @@ fun DetailRoute(
                     Text(item.description, color = colors.onBackground, fontSize = 14.sp)
                     Spacer(Modifier.height(16.dp))
                     Row {
-                        FocusButton(stringResource(R.string.play)) {
+                        FocusButton(label = stringResource(R.string.play), onClick = {
                             onPlay(PlayTarget.vod(item.id, item.title, item.streamUrl))
-                        }
+                        })
                         Spacer(Modifier.width(8.dp))
-                        FocusButton(if (item.watchlist) stringResource(R.string.watchlist_added) else stringResource(R.string.watchlist), vm::toggleWatchlist)
+                        FocusButton(label = if (item.watchlist) stringResource(R.string.watchlist_added) else stringResource(R.string.watchlist), onClick = vm::toggleWatchlist)
                         Spacer(Modifier.width(8.dp))
-                        FocusButton(stringResource(R.string.rate)) { vm.rate(4f) }
+                        FocusButton(label = stringResource(R.string.rate), onClick = { vm.rate(4f) })
                     }
                 }
             }
@@ -223,9 +224,9 @@ fun DetailRoute(
                 TvLazyColumn(Modifier.height(220.dp)) {
                     items(vm.episodes, key = { it.id }) { ep ->
                         FocusButton(
-                            stringResource(R.string.episode_n, ep.episode, ep.title),
-                            { onPlay(PlayTarget.episode(ep.id, ep.title, ep.streamUrl)) },
-                            Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                            label = stringResource(R.string.episode_n, ep.episode, ep.title),
+                            onClick = { onPlay(PlayTarget.episode(ep.id, ep.title, ep.streamUrl)) },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         )
                     }
                 }

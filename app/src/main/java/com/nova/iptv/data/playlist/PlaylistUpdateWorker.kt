@@ -28,8 +28,8 @@ class PlaylistUpdateWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         setForeground(notification("Updating playlists"))
-        val all = kotlinx.coroutines.flow.first(repo.playlists()) // keep import-free
-        val list = repo.playlists().let { flow -> kotlinx.coroutines.flow.first(flow) }
+        val all = repo.playlists().first() // keep import-free
+        val list = repo.playlists().first()
         all.filter { it.autoUpdate && it.type != com.nova.iptv.domain.model.PlaylistType.DEMO }
             .forEach { pl ->
                 runCatching { importer.refresh(pl) }
@@ -46,7 +46,11 @@ class PlaylistUpdateWorker @AssistedInject constructor(
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .build()
-        return ForegroundInfo(id, n)
+        return if (android.os.Build.VERSION.SDK_INT >= 34) {
+            ForegroundInfo(id, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(id, n)
+        }
     }
 
     companion object {

@@ -99,7 +99,7 @@ fun SearchRoute(
             .fillMaxSize()
             .background(colors.background)
             .onPreviewKeyEvent {
-                if (it.nativeKeyCode == KeyEvent.KEYCODE_SEARCH) {
+                if (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_SEARCH) {
                     val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                         .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     runCatching { voice.launch(intent) }
@@ -137,14 +137,18 @@ fun SearchRoute(
                     groups.forEach { (kind, list) ->
                         item { Text(kind.uppercase(), color = colors.muted, fontSize = 11.sp, letterSpacing = 1.4.sp, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)) }
                         items(list, key = { it.kind + it.id }) { hit ->
-                            FocusButton("${hit.title}  ${hit.subtitle}", {
-                                when (hit.kind) {
-                                    "channel" -> onPlay(PlayTarget.live(hit.id, hit.title))
-                                    "movie" -> onDetail("movie", hit.id)
-                                    "series" -> onDetail("series", hit.id)
-                                    else -> onPlay(PlayTarget.live(hit.id, hit.title))
-                                }
-                            }, Modifier.fillMaxWidth().padding(vertical = 3.dp))
+                            FocusButton(
+                                label = "${hit.title}  ${hit.subtitle}",
+                                onClick = {
+                                    when (hit.kind) {
+                                        "channel" -> onPlay(PlayTarget.live(hit.id, hit.title))
+                                        "movie" -> onDetail("movie", hit.id)
+                                        "series" -> onDetail("series", hit.id)
+                                        else -> onPlay(PlayTarget.live(hit.id, hit.title))
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                            )
                         }
                     }
                 }

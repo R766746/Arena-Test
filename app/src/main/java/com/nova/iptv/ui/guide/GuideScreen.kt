@@ -109,7 +109,7 @@ fun GuideScreen(
             .background(colors.background)
             .onPreviewKeyEvent { ev ->
                 if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (ev.nativeKeyCode) {
+                when (ev.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_CHANNEL_UP -> { onShift(-1); true }
                     KeyEvent.KEYCODE_CHANNEL_DOWN -> { onShift(1); true }
                     else -> false
@@ -322,19 +322,19 @@ private fun ProgramInfoDialog(
                 Text(program.description.ifBlank { "No description." }, color = colors.onBackground, fontSize = 14.sp)
                 Spacer(Modifier.height(16.dp))
                 Row {
-                    FocusButton(stringResource(R.string.watch_live), onWatch)
+                    FocusButton(label = stringResource(R.string.watch_live), onClick = onWatch)
                     Spacer(Modifier.width(8.dp))
                     if (program.isPast(now) && channel?.catchup == true) {
-                        FocusButton(stringResource(R.string.play_catchup), onCatchup)
+                        FocusButton(label = stringResource(R.string.play_catchup), onClick = onCatchup)
                         Spacer(Modifier.width(8.dp))
                     }
-                    FocusButton(stringResource(R.string.action_record), onRecord)
+                    FocusButton(label = stringResource(R.string.action_record), onClick = onRecord)
                     Spacer(Modifier.width(8.dp))
-                    FocusButton(stringResource(R.string.remind), onRemind)
+                    FocusButton(label = stringResource(R.string.remind), onClick = onRemind)
                     Spacer(Modifier.width(8.dp))
-                    FocusButton(stringResource(R.string.action_favorite_add), onFav)
+                    FocusButton(label = stringResource(R.string.action_favorite_add), onClick = onFav)
                     Spacer(Modifier.width(8.dp))
-                    FocusButton(stringResource(R.string.action_cancel), onDismiss)
+                    FocusButton(label = stringResource(R.string.action_cancel), onClick = onDismiss)
                 }
             }
         }

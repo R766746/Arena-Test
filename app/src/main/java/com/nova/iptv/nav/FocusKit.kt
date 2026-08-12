@@ -125,7 +125,7 @@ fun Modifier.drawFocusRing(
         .drawWithContent {
             drawContent()
             if (focused) {
-                val stroke = width.toPx().let { FocusRing.toPx() }
+                val stroke = FocusRing.toPx()
                 drawRoundRect(
                     color = palette.accent.copy(alpha = 0.28f),
                     cornerRadius = CornerRadius(radius.toPx(), radius.toPx()),
@@ -161,7 +161,7 @@ fun Modifier.dpadClickable(
     )
         .focusable(enabled, interaction)
         .onKeyEvent { event ->
-            val code = event.nativeKeyCode
+            val code = event.nativeKeyEvent.keyCode
             val isOk = code == KeyEvent.KEYCODE_DPAD_CENTER ||
                 code == KeyEvent.KEYCODE_ENTER ||
                 code == KeyEvent.KEYCODE_NUMPAD_ENTER ||
@@ -282,16 +282,16 @@ fun Modifier.rightTo(target: FocusRequester): Modifier =
     focusProperties { right = target }
 
 fun isDpadLeft(event: androidx.compose.ui.input.key.KeyEvent): Boolean =
-    event.type == KeyEventType.KeyDown && event.nativeKeyCode == KeyEvent.KEYCODE_DPAD_LEFT
+    event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
 
 fun isDpadRight(event: androidx.compose.ui.input.key.KeyEvent): Boolean =
-    event.type == KeyEventType.KeyDown && event.nativeKeyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+    event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
 
 fun isChannelUp(event: androidx.compose.ui.input.key.KeyEvent): Boolean =
-    event.type == KeyEventType.KeyDown && event.nativeKeyCode == KeyEvent.KEYCODE_CHANNEL_UP
+    event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_CHANNEL_UP
 
 fun isChannelDown(event: androidx.compose.ui.input.key.KeyEvent): Boolean =
-    event.type == KeyEventType.KeyDown && event.nativeKeyCode == KeyEvent.KEYCODE_CHANNEL_DOWN
+    event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN
 
 fun digitFromKey(code: Int): Int? = when (code) {
     KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> 0

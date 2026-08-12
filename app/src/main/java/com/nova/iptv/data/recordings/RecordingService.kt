@@ -43,7 +43,11 @@ class RecordingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val id = intent?.getStringExtra("id") ?: return START_NOT_STICKY
-        startForeground(99, notif("Recording…"))
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(99, notif("Recording…"), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+            startForeground(99, notif("Recording…"))
+        }
         job?.cancel()
         job = scope.launch { record(id) }
         return START_NOT_STICKY

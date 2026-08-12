@@ -158,7 +158,7 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { ev ->
-                onKey(ev.nativeKeyCode, ev.type == KeyEventType.KeyDown)
+                onKey(ev.nativeKeyEvent.keyCode, ev.type == KeyEventType.KeyDown)
             },
     ) {
         playerView()
@@ -175,7 +175,7 @@ fun PlayerScreen(
                     Modifier.padding(24.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    FocusButton(stringResource(R.string.cd_back), onBack)
+                    FocusButton(label = stringResource(R.string.cd_back), onClick = onBack)
                     Spacer(Modifier.width(12.dp))
                     val pill = when {
                         state.isCatchup -> stringResource(R.string.catchup_pill)
@@ -243,8 +243,8 @@ fun PlayerScreen(
                         Text(state.error, color = colors.muted, fontSize = 13.sp)
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FocusButton(stringResource(R.string.player_retry), onRetry)
-                            FocusButton(stringResource(R.string.player_external), onExternal)
+                            FocusButton(label = stringResource(R.string.player_retry), onClick = onRetry)
+                            FocusButton(label = stringResource(R.string.player_external), onClick = onExternal)
                         }
                     }
                 }
@@ -255,13 +255,13 @@ fun PlayerScreen(
             GlassPanel(Modifier.width(280.dp).fillMaxHeight().padding(12.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("OPTIONS", color = colors.muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
-                    FocusButton(stringResource(R.string.overlay_favorite), onFavorite, Modifier.fillMaxWidth())
-                    FocusButton(stringResource(R.string.overlay_multiview), onMulti, Modifier.fillMaxWidth())
-                    FocusButton(stringResource(R.string.overlay_guide), onGuide, Modifier.fillMaxWidth())
-                    FocusButton(stringResource(R.string.overlay_record), onRecord, Modifier.fillMaxWidth())
-                    FocusButton(stringResource(R.string.overlay_audio), onCloseSheet, Modifier.fillMaxWidth())
-                    FocusButton(stringResource(R.string.overlay_subtitles), onCloseSheet, Modifier.fillMaxWidth())
-                    FocusButton(stringResource(R.string.overlay_aspect), onCloseSheet, Modifier.fillMaxWidth())
+                    FocusButton(label = stringResource(R.string.overlay_favorite), onClick = onFavorite, modifier = Modifier.fillMaxWidth())
+                    FocusButton(label = stringResource(R.string.overlay_multiview), onClick = onMulti, modifier = Modifier.fillMaxWidth())
+                    FocusButton(label = stringResource(R.string.overlay_guide), onClick = onGuide, modifier = Modifier.fillMaxWidth())
+                    FocusButton(label = stringResource(R.string.overlay_record), onClick = onRecord, modifier = Modifier.fillMaxWidth())
+                    FocusButton(label = stringResource(R.string.overlay_audio), onClick = onCloseSheet, modifier = Modifier.fillMaxWidth())
+                    FocusButton(label = stringResource(R.string.overlay_subtitles), onClick = onCloseSheet, modifier = Modifier.fillMaxWidth())
+                    FocusButton(label = stringResource(R.string.overlay_aspect), onClick = onCloseSheet, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
