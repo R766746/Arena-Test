@@ -3,11 +3,12 @@ package com.nova.iptv.data.epg
 import com.nova.iptv.core.util.TimeFmt
 import com.nova.iptv.core.util.newId
 import com.nova.iptv.domain.model.Program
-import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlPullParserFactory
 import java.io.BufferedInputStream
 import java.io.InputStream
 import java.util.zip.GZIPInputStream
+import javax.xml.parsers.SAXParserFactory
+import org.xml.sax.Attributes
+import org.xml.sax.helpers.DefaultHandler
 
 data class XmltvChannel(
     val id: String,
@@ -53,90 +54,67 @@ object XmltvParser {
         onYield: () -> Unit = {},
     ): XmltvResult {
         val stream = openMaybeGzip(input, urlHint)
-        val factory = XmlPullParserFactory.newInstance().apply { isNamespaceAware = false }
-        val parser = factory.newPullParser()
-        parser.setInput(stream, null)
-
         val channels = ArrayList<XmltvChannel>(512)
         val programmes = ArrayList<RawProgramme>(4096)
         val shift = timeShiftHours * 3_600_000L
+        val handler = object : DefaultHandler() {
+            var channelId = ""
+            var names = ArrayList<String>()
+            var icon = ""
+            var programmeChannel = ""
+            var start = 0L
+            var stop = 0L
+            var title = ""
+            var description = ""
+            var category = ""
+            val text = StringBuilder()
+            var count = 0
 
-        var event = parser.eventType
-        var curChannelId = ""
-        var curNames = ArrayList<String>()
-        val curIcon = StringBuilder()
-        var inChannel = false
-        var inProgramme = false
-        var pChannel = ""
-        var pStart = 0L
-        var pStop = 0L
-        var pTitle = ""
-        var pDesc = ""
-        var pCat = ""
-        var tag = ""
-        var count = 0
-
-        while (event != XmlPullParser.END_DOCUMENT) {
-            when (event) {
-                XmlPullParser.START_TAG -> {
-                    tag = parser.name ?: ""
-                    when (tag) {
-                        "channel" -> {
-                            inChannel = true
-                            curChannelId = parser.getAttributeValue(null, "id").orEmpty()
-                            curNames = ArrayList()
-                            curIcon.setLength(0)
-                        }
-                        "icon" -> if (inChannel) {
-                            curIcon.append(parser.getAttributeValue(null, "src").orEmpty())
-                        }
-                        "programme" -> {
-                            inProgramme = true
-                            pChannel = parser.getAttributeValue(null, "channel").orEmpty()
-                            pStart = TimeFmt.xmltvToEpoch(parser.getAttributeValue(null, "start").orEmpty()) + shift
-                            pStop = TimeFmt.xmltvToEpoch(
-                                parser.getAttributeValue(null, "stop")
-                                    ?: parser.getAttributeValue(null, "end").orEmpty(),
-                            ) + shift
-                            pTitle = ""; pDesc = ""; pCat = ""
-                        }
+            override fun startElement(uri: String?, localName: String?, qName: String, attributes: Attributes) {
+                text.setLength(0)
+                when (qName) {
+                    "channel" -> {
+                        channelId = attributes.getValue("id").orEmpty()
+                        names = ArrayList()
+                        icon = ""
                     }
-                }
-                XmlPullParser.TEXT -> {
-                    val text = parser.text?.trim().orEmpty()
-                    if (text.isEmpty()) {
-                        // skip
-                    } else if (inChannel && tag == "display-name") {
-                        curNames += text
-                    } else if (inProgramme) {
-                        when (tag) {
-                            "title" -> pTitle = text
-                            "desc" -> pDesc = text
-                            "category" -> if (pCat.isEmpty()) pCat = text
-                        }
+                    "icon" -> icon = attributes.getValue("src").orEmpty()
+                    "programme" -> {
+                        programmeChannel = attributes.getValue("channel").orEmpty()
+                        start = TimeFmt.xmltvToEpoch(attributes.getValue("start").orEmpty()) + shift
+                        stop = TimeFmt.xmltvToEpoch(attributes.getValue("stop") ?: attributes.getValue("end").orEmpty()) + shift
+                        title = ""; description = ""; category = ""
                     }
-                }
-                XmlPullParser.END_TAG -> {
-                    when (parser.name) {
-                        "channel" -> {
-                            channels += XmltvChannel(curChannelId, curNames.toList(), curIcon.toString())
-                            inChannel = false
-                        }
-                        "programme" -> {
-                            if (pChannel.isNotBlank() && pStart > 0 && pStop > pStart) {
-                                programmes += RawProgramme(pChannel, pTitle.ifBlank { "Programme" }, pDesc, pCat, pStart, pStop)
-                            }
-                            inProgramme = false
-                            count++
-                            if (count % 500 == 0) onYield()
-                        }
-                    }
-                    tag = ""
                 }
             }
-            event = parser.next()
+
+            override fun characters(ch: CharArray, start: Int, length: Int) {
+                text.append(ch, start, length)
+            }
+
+            override fun endElement(uri: String?, localName: String?, qName: String) {
+                val value = text.toString().trim()
+                when (qName) {
+                    "display-name" -> if (value.isNotEmpty()) names += value
+                    "title" -> title = value
+                    "desc" -> description = value
+                    "category" -> if (category.isEmpty()) category = value
+                    "channel" -> channels += XmltvChannel(channelId, names.toList(), icon)
+                    "programme" -> {
+                        if (programmeChannel.isNotBlank() && start > 0 && stop > start) {
+                            programmes += RawProgramme(programmeChannel, title.ifBlank { "Programme" }, description, category, start, stop)
+                        }
+                        count++
+                        if (count % 500 == 0) onYield()
+                    }
+                }
+                text.setLength(0)
+            }
         }
-        stream.close()
+        stream.use {
+            SAXParserFactory.newInstance().apply { isNamespaceAware = false }
+                .newSAXParser().parse(it, handler)
+        }
         return XmltvResult(channels, programmes)
     }
 

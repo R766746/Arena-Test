@@ -1,5 +1,6 @@
 package com.nova.iptv.data.playlist
 
+import com.nova.iptv.BuildConfig
 import com.nova.iptv.core.util.colorFromName
 import com.nova.iptv.core.util.logoInitials
 import com.nova.iptv.data.epg.DemoEpg
@@ -25,8 +26,9 @@ class DemoCatalog @Inject constructor(
     private val demoEpg: DemoEpg,
 ) {
     suspend fun ensureSeeded() {
+        val required = BuildConfig.QA_CHANNEL_COUNT.coerceAtLeast(1)
         if (db.playlists().byId(Playlist.DEMO_ID) != null &&
-            db.channels().count(Playlist.DEMO_ID) > 0
+            db.channels().count(Playlist.DEMO_ID) >= required
         ) {
             return
         }
@@ -50,7 +52,7 @@ class DemoCatalog @Inject constructor(
         )
         db.playlists().upsert(playlist)
 
-        val channels = CHANNELS.mapIndexed { index, spec ->
+        val baseChannels = CHANNELS.mapIndexed { index, spec ->
             ChannelEntity(
                 id = "demo:ch:${spec.number}",
                 playlistId = Playlist.DEMO_ID,
@@ -70,9 +72,33 @@ class DemoCatalog @Inject constructor(
                 userOrder = index,
             )
         }
+        val extraCount = (BuildConfig.QA_CHANNEL_COUNT - baseChannels.size).coerceAtLeast(0)
+        val channels = baseChannels + List(extraCount) { offset ->
+            val index = baseChannels.size + offset
+            val number = index + 1
+            val name = "QA Channel ${number.toString().padStart(5, '0')}"
+            ChannelEntity(
+                id = "demo:qa:$number",
+                playlistId = Playlist.DEMO_ID,
+                number = number,
+                name = name,
+                groupName = "QA 10K",
+                logoUrl = "",
+                logoText = logoInitials(name),
+                logoColor = colorFromName(name),
+                streamUrl = BIG_BUCK_BUNNY,
+                epgId = "",
+                catchup = false,
+                catchupDays = 0,
+                favorite = false,
+                hidden = false,
+                locked = false,
+                userOrder = index,
+            )
+        }
         db.channels().replacePlaylistChannels(Playlist.DEMO_ID, channels)
 
-        val programs = demoEpg.generate(channels.map { it.toModel() })
+        val programs = demoEpg.generate(baseChannels.map { it.toModel() })
         programs.chunked(500).forEach { db.programs().upsertAll(it.map { p -> ProgramEntity.from(p) }) }
 
         db.vod().deleteByPlaylist(Playlist.DEMO_ID)

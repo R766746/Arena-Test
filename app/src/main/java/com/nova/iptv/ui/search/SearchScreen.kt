@@ -28,8 +28,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -85,6 +89,7 @@ fun SearchRoute(
     val colors = LocalNovaPalette.current
     val focus = remember { FocusRequester() }
     val ctx = LocalContext.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
         val spoken = res.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!spoken.isNullOrBlank()) {
@@ -92,7 +97,10 @@ fun SearchRoute(
             vm.query.value = spoken
         }
     }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    LaunchedEffect(Unit) {
+        focus.requestFocus()
+        keyboard?.show()
+    }
 
     Column(
         Modifier
@@ -122,6 +130,7 @@ fun SearchRoute(
                 .focusRequester(focus),
             textStyle = TextStyle(color = colors.onBackground, fontSize = 18.sp),
             cursorBrush = SolidColor(colors.accent),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Search),
             singleLine = true,
             decorationBox = { inner ->
                 if (text.isEmpty()) Text(stringResource(R.string.search_hint), color = colors.muted, fontSize = 16.sp)

@@ -13,6 +13,8 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import androidx.core.app.NotificationCompat
+import androidx.documentfile.provider.DocumentFile
+import android.net.Uri
 import com.nova.iptv.R
 import com.nova.iptv.core.util.newId
 import com.nova.iptv.data.local.NovaDatabase
@@ -72,6 +74,18 @@ class RecordingRepository @Inject constructor(
     suspend fun update(rec: Recording) = db.recordings().upsert(RecordingEntity.from(rec))
 
     suspend fun delete(id: String) {
+        val recording = get(id)
+        recording?.fileUri?.takeIf { it.isNotBlank() }?.let { raw ->
+            runCatching {
+                val uri = Uri.parse(raw)
+                if (uri.scheme == "file") {
+                    uri.path?.let { java.io.File(it).delete() }
+                } else {
+                    DocumentFile.fromSingleUri(context, uri)?.delete()
+                        ?: (context.contentResolver.delete(uri, null, null) > 0)
+                }
+            }
+        }
         db.recordings().delete(id)
         WorkManager.getInstance(context).cancelAllWorkByTag("rec-$id")
     }

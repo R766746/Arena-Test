@@ -54,6 +54,7 @@ object M3uParser {
         var pending: ExtInf? = null
         var pendingUa = ""
         var pendingRef = ""
+        var pendingGroup = ""
         var count = 0
         var nextNumber = 1
 
@@ -69,7 +70,11 @@ object M3uParser {
                     headerEpg = attrs["url-tvg"] ?: attrs["x-tvg-url"] ?: attrs["tvg-url"].orEmpty()
                 }
                 line.startsWith("#EXTINF", ignoreCase = true) -> {
-                    pending = parseExtInf(line)
+                    val parsed = parseExtInf(line)
+                    pending = if (parsed.attrs["group-title"].isNullOrBlank() && pendingGroup.isNotBlank()) {
+                        parsed.copy(attrs = parsed.attrs + ("group-title" to pendingGroup))
+                    } else parsed
+                    pendingGroup = ""
                 }
                 line.startsWith("#EXTVLCOPT:", ignoreCase = true) -> {
                     val body = line.substringAfter(':')
@@ -83,6 +88,7 @@ object M3uParser {
                 }
                 line.startsWith("#EXTGRP:", ignoreCase = true) -> {
                     val g = line.substringAfter(':').trim()
+                    if (pending == null) pendingGroup = g
                     pending = pending?.let {
                         if (it.attrs["group-title"].isNullOrBlank()) {
                             it.copy(attrs = it.attrs + ("group-title" to g))

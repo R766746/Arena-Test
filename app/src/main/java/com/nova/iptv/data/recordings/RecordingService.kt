@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
@@ -75,14 +76,13 @@ class RecordingService : Service() {
             client.newCall(req).execute().use { resp ->
                 val body = resp.body ?: error("empty")
                 contentResolver.openOutputStream(outUri)?.use { os: OutputStream ->
-                    val buf = ByteArray(32 * 1024)
-                    val src = body.byteStream()
                     val deadline = rec.endMs
-                    while (System.currentTimeMillis() < deadline) {
-                        val n = src.read(buf)
-                        if (n <= 0) break
-                        os.write(buf, 0, n)
-                        bytes += n
+                    val isHls = url.contains(".m3u8", true) ||
+                        resp.header("Content-Type").orEmpty().contains("mpegurl", true)
+                    if (isHls) {
+                        bytes += recordHls(resp.request.url, body.string(), os, deadline)
+                    } else {
+                        bytes += copyBody(body.byteStream(), os, deadline)
                     }
                     os.flush()
                 }
@@ -93,6 +93,77 @@ class RecordingService : Service() {
             repo.update(rec.copy(status = RecordingStatus.FAILED, bytes = bytes))
         }
         stopSelf()
+    }
+
+    private suspend fun recordHls(
+        initialUrl: okhttp3.HttpUrl,
+        initialText: String,
+        output: OutputStream,
+        deadline: Long,
+    ): Long {
+        var mediaUrl = initialUrl
+        var playlist = initialText
+        if (playlist.contains("#EXT-X-STREAM-INF")) {
+            val variants = playlist.lineSequence().toList().mapIndexedNotNull { index, line ->
+                if (!line.startsWith("#EXT-X-STREAM-INF")) return@mapIndexedNotNull null
+                val bandwidth = Regex("BANDWIDTH=(\\d+)").find(line)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                val uri = playlist.lineSequence().drop(index + 1).firstOrNull { it.isNotBlank() && !it.startsWith('#') }
+                    ?: return@mapIndexedNotNull null
+                bandwidth to (mediaUrl.resolve(uri) ?: return@mapIndexedNotNull null)
+            }
+            mediaUrl = variants.maxByOrNull { it.first }?.second ?: error("HLS master has no variants")
+            playlist = fetchText(mediaUrl)
+        }
+
+        val seen = LinkedHashSet<String>()
+        var written = 0L
+        while (System.currentTimeMillis() < deadline) {
+            val lines = playlist.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+            lines.filter { it.startsWith("#EXT-X-MAP") }.forEach { line ->
+                val uri = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.get(1) ?: return@forEach
+                val resolved = mediaUrl.resolve(uri) ?: return@forEach
+                if (seen.add(resolved.toString())) written += download(resolved, output, deadline)
+            }
+            lines.filter { !it.startsWith('#') }.forEach { uri ->
+                val resolved = mediaUrl.resolve(uri) ?: return@forEach
+                if (seen.add(resolved.toString())) written += download(resolved, output, deadline)
+            }
+            if (lines.any { it == "#EXT-X-ENDLIST" }) break
+            val targetSeconds = lines.firstNotNullOfOrNull {
+                it.removePrefix("#EXT-X-TARGETDURATION:").takeIf { _ -> it.startsWith("#EXT-X-TARGETDURATION:") }?.toLongOrNull()
+            } ?: 4L
+            delay((targetSeconds * 500L).coerceIn(1_000L, 10_000L))
+            playlist = fetchText(mediaUrl)
+        }
+        return written
+    }
+
+    private fun fetchText(url: okhttp3.HttpUrl): String {
+        return client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) error("HLS playlist HTTP ${response.code}")
+            response.body?.string() ?: error("empty HLS playlist")
+        }
+    }
+
+    private fun download(url: okhttp3.HttpUrl, output: OutputStream, deadline: Long): Long {
+        return client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) error("HLS segment HTTP ${response.code}")
+            copyBody(response.body?.byteStream() ?: error("empty HLS segment"), output, deadline)
+        }
+    }
+
+    private fun copyBody(input: java.io.InputStream, output: OutputStream, deadline: Long): Long {
+        var written = 0L
+        input.use { source ->
+            val buffer = ByteArray(32 * 1024)
+            while (System.currentTimeMillis() < deadline) {
+                val count = source.read(buffer)
+                if (count <= 0) break
+                output.write(buffer, 0, count)
+                written += count
+            }
+        }
+        return written
     }
 
     private fun openOutput(tree: String, title: String): Uri? {

@@ -156,12 +156,14 @@
     <string name="epg_update_playlist">Update on playlist change</string>
     <string name="epg_match_tools">Channel matching</string>
     <string name="epg_prefer_logo">Prefer logos from</string>
+    <string name="epg_refresh_now">Refresh EPG now</string>
 
     <string name="theme_midnight">Midnight</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_cinema">Cinema</string>
     <string name="theme_light">Light</string>
     <string name="accent_color">Accent</string>
+    <string name="appearance_theme">Theme</string>
     <string name="font_scale">Text size</string>
     <string name="list_style">List style</string>
     <string name="logo_size">Logo size</string>
@@ -191,6 +193,7 @@
     <string name="parental_enter_pin">Enter PIN</string>
     <string name="parental_wrong">Incorrect PIN</string>
     <string name="parental_set">Set a 4-digit PIN</string>
+    <string name="parental_set_default">Set PIN 0000</string>
 
     <string name="rec_folder">Storage folder</string>
     <string name="rec_padding">Padding (minutes)</string>
@@ -208,12 +211,14 @@
     <string name="backup_import">Restore from file</string>
     <string name="backup_omit_passwords">Omit passwords</string>
     <string name="clear_cache">Clear image + EPG cache</string>
+    <string name="parental_locked_groups">Locked groups</string>
     <string name="reset_settings">Reset settings</string>
 
     <string name="about_version">Version %1$s (%2$d)</string>
     <string name="about_player_only">NOVA is a player only and does not provide IPTV content.</string>
     <string name="about_licenses">Open-source licenses</string>
     <string name="about_memory">Device memory</string>
+    <string name="about_memory_status">RAM %1$s  lowRam=%2$b</string>
     <string name="about_diagnostics">Diagnostics</string>
 
     <string name="diag_heap">Heap</string>

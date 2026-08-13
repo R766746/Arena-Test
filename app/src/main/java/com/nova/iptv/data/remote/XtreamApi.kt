@@ -89,6 +89,15 @@ interface XtreamApi {
         @Query("stream_id") streamId: String,
         @Query("limit") limit: Int = 20,
     ): XtreamShortEpg
+
+    @GET
+    suspend fun simpleEpg(
+        @Url url: String,
+        @Query("username") username: String,
+        @Query("password") password: String,
+        @Query("action") action: String = "get_simple_data_table",
+        @Query("stream_id") streamId: String,
+    ): XtreamShortEpg
 }
 
 @JsonClass(generateAdapter = true)

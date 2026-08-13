@@ -38,6 +38,8 @@ data class PlayerUiState(
     val seekable: Boolean = false,
     val position: Long = 0,
     val duration: Long = 0,
+    val message: String? = null,
+    val zapTransition: Long = 0,
 )
 
 @HiltViewModel
@@ -55,11 +57,19 @@ class PlayerViewModel @Inject constructor(
     val state: StateFlow<PlayerUiState> = _state
     private var hideJob: Job? = null
     private var zapJob: Job? = null
+    private var messageJob: Job? = null
 
     init {
         viewModelScope.launch {
             playerManager.error.collect { err ->
                 _state.value = _state.value.copy(error = err)
+            }
+        }
+        viewModelScope.launch {
+            playerManager.completed.collect { target ->
+                if (target.kind.equals("RECORDING", true) && settings.settings.value.recDeleteWatched) {
+                    recordings.delete(target.id)
+                }
             }
         }
     }
@@ -141,10 +151,19 @@ class PlayerViewModel @Inject constructor(
 
     fun zap(delta: Int) {
         viewModelScope.launch {
-            val s = settings.settings.value
             val current = _state.value.channel ?: return@launch
             val next = zapUseCase.next(current.playlistId, current.id, delta) ?: return@launch
+            _state.value = _state.value.copy(zapTransition = System.nanoTime())
             bind(PlayTarget.live(next.id, next.name, next.number, next.streamUrl))
+        }
+    }
+
+    fun showTimeshiftUnavailable(message: String) {
+        messageJob?.cancel()
+        _state.value = _state.value.copy(message = message)
+        messageJob = viewModelScope.launch {
+            delay(3_000)
+            _state.value = _state.value.copy(message = null)
         }
     }
 

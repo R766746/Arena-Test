@@ -86,6 +86,12 @@ class FakePlaylistRepository : PlaylistRepository {
     override suspend fun setRating(id: String, rating: Float) {
         vodList.value = vodList.value.map { if (it.id == id) it.copy(localRating = rating) else it }
     }
+    override suspend fun saveVodDetails(item: VodItem, episodes: List<Episode>) {
+        vodList.value = vodList.value.filterNot { it.id == item.id } + item
+        if (episodes.isNotEmpty()) {
+            episodeList.value = episodeList.value.filterNot { it.seriesId == item.id } + episodes
+        }
+    }
     override suspend fun recordWatch(history: WatchHistory) {
         hist.value = listOf(history) + hist.value.filterNot { it.refId == history.refId }
     }

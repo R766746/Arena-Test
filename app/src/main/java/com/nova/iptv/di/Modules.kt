@@ -10,6 +10,7 @@ import com.nova.iptv.data.local.NovaDatabase
 import com.nova.iptv.data.playlist.PlaylistRepository
 import com.nova.iptv.data.playlist.PlaylistRepositoryImpl
 import com.nova.iptv.data.remote.XtreamApi
+import com.nova.iptv.data.remote.TmdbApi
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Binds
@@ -81,6 +82,16 @@ object NetworkModule {
             .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
             .build()
             .create(XtreamApi::class.java)
+
+    @Provides
+    @Singleton
+    fun tmdbApi(client: OkHttpClient, moshi: Moshi): TmdbApi =
+        Retrofit.Builder()
+            .baseUrl("https://api.themoviedb.org/")
+            .client(client)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(TmdbApi::class.java)
 
     @Provides
     @Singleton

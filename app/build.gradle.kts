@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -21,6 +22,7 @@ android {
         vectorDrawables.useSupportLibrary = true
 
         buildConfigField("boolean", "SEED_DEMO", "true")
+        buildConfigField("int", "QA_CHANNEL_COUNT", "0")
     }
 
     buildTypes {
@@ -36,6 +38,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            matchingFallbacks += listOf("release")
+            buildConfigField("int", "QA_CHANNEL_COUNT", "10000")
         }
     }
 
@@ -139,6 +148,7 @@ dependencies {
     implementation(libs.documentfile)
 
     debugImplementation(libs.leakcanary)
+    baselineProfile(project(":baselineprofile"))
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
@@ -150,4 +160,6 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.hilt.testing)
+    kspAndroidTest(libs.hilt.compiler)
 }

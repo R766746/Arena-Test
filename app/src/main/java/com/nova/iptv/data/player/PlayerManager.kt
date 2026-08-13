@@ -5,6 +5,7 @@ import android.content.Intent
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.view.Display
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -27,12 +28,14 @@ import com.nova.iptv.nav.PlayTarget
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@UnstableApi
+@OptIn(markerClass = [UnstableApi::class])
 @Singleton
 class PlayerManager @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -53,6 +56,12 @@ class PlayerManager @Inject constructor(
 
     private val _target = MutableStateFlow<PlayTarget?>(null)
     val target: StateFlow<PlayTarget?> = _target
+
+    private val _preferredDisplayModeId = MutableStateFlow(0)
+    val preferredDisplayModeId: StateFlow<Int> = _preferredDisplayModeId
+
+    private val _completed = MutableSharedFlow<PlayTarget>(extraBufferCapacity = 1)
+    val completed: SharedFlow<PlayTarget> = _completed
 
     @Volatile var pip: Boolean = false
         private set
@@ -77,6 +86,11 @@ class PlayerManager @Inject constructor(
                 }
                 override fun onTracksChanged(tracks: Tracks) {
                     applyAfr(p)
+                }
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_ENDED) {
+                        _target.value?.let { _completed.tryEmit(it) }
+                    }
                 }
             })
         }
@@ -166,6 +180,7 @@ class PlayerManager @Inject constructor(
     fun releaseMain() {
         main?.release()
         main = null
+        _preferredDisplayModeId.value = 0
         budget.releaseFullscreen()
     }
 
@@ -304,7 +319,10 @@ class PlayerManager @Inject constructor(
     }
 
     private fun applyAfr(player: ExoPlayer) {
-        if (!settings.settings.value.afr) return
+        if (!settings.settings.value.afr) {
+            _preferredDisplayModeId.value = 0
+            return
+        }
         val fmt = player.videoFormat ?: return
         val rate = fmt.frameRate
         if (rate <= 0f) return
@@ -314,6 +332,7 @@ class PlayerManager @Inject constructor(
             if (Build.VERSION.SDK_INT >= 23) {
                 val mode = display.supportedModes.minByOrNull { kotlin.math.abs(it.refreshRate - rate) }
                 Timber.d("AFR prefer mode %s for %.2f fps", mode?.modeId, rate)
+                _preferredDisplayModeId.value = mode?.modeId ?: 0
             }
         }
     }

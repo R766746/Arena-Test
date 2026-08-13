@@ -12,7 +12,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontWeight
+import com.nova.iptv.R
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -89,7 +91,10 @@ fun novaIntTween(duration: Int = 220) = tween<Int>(
  * Geometric sans close to Outfit. A bundled Outfit.ttf can be dropped into
  * res/font/outfit.ttf; until then we use the device geometric sans.
  */
-val NovaFontFamily: FontFamily = FontFamily.SansSerif
+val NovaFontFamily: FontFamily = FontFamily(
+    Font(R.font.outfit_variable, FontWeight.Normal),
+    Font(R.font.outfit_variable, FontWeight.Medium),
+)
 
 fun novaTypography(scale: Float) = androidx.tv.material3.Typography(
     displayLarge = TextStyle(

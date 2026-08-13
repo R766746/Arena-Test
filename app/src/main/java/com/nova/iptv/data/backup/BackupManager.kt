@@ -5,6 +5,7 @@ import android.net.Uri
 import com.nova.iptv.data.local.PasswordVault
 import com.nova.iptv.data.local.SettingsRepository
 import com.nova.iptv.data.playlist.PlaylistRepository
+import com.nova.iptv.data.playlist.PlaylistImporter
 import com.nova.iptv.domain.model.AppSettings
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
@@ -40,6 +41,7 @@ class BackupManager @Inject constructor(
     private val playlists: PlaylistRepository,
     private val settings: SettingsRepository,
     private val vault: PasswordVault,
+    private val importer: PlaylistImporter,
     moshi: Moshi,
 ) {
     private val adapter = moshi.adapter(BackupPayload::class.java)
@@ -92,6 +94,28 @@ class BackupManager @Inject constructor(
             )
             playlists.upsertPlaylist(pl)
             if (!bp.password.isNullOrBlank()) vault.putPassword(bp.id, bp.password)
+            if (pl.type != com.nova.iptv.domain.model.PlaylistType.DEMO) {
+                importer.refresh(pl).getOrThrow()
+            }
+        }
+        payload.favorites.forEach { id ->
+            val channel = playlists.getChannel(id)
+            if (channel != null && !channel.favorite) playlists.toggleFavorite(id)
+        }
+        settings.update { current ->
+            current.copy(
+                theme = payload.settings["theme"]?.let {
+                    runCatching { com.nova.iptv.domain.model.ThemeName.valueOf(it) }.getOrNull()
+                } ?: current.theme,
+                accentArgb = payload.settings["accent"]?.toLongOrNull() ?: current.accentArgb,
+                clock24h = payload.settings["clock24h"]?.toBooleanStrictOrNull() ?: current.clock24h,
+                startupMode = payload.settings["startup"]?.let {
+                    runCatching { com.nova.iptv.domain.model.StartupMode.valueOf(it) }.getOrNull()
+                } ?: current.startupMode,
+                listStyle = payload.settings["listStyle"]?.let {
+                    runCatching { com.nova.iptv.domain.model.ListStyle.valueOf(it) }.getOrNull()
+                } ?: current.listStyle,
+            )
         }
     }.onFailure { Timber.e(it, "backup restore") }
 }

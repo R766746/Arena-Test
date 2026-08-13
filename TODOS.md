@@ -4,71 +4,71 @@ Tracked after the 15-prompt implementation. Paths are from the repo root.
 
 ## Playback
 
-- [ ] Per-request HTTP headers (User-Agent / Referer / Origin) are collected but not yet attached to the OkHttp `DataSource` used by the current item. Wire `DefaultHttpDataSource.Factory.setDefaultRequestProperties` inside `PlayerManager.play` / `zap`.  
+- [x] Per-request HTTP headers (User-Agent / Referer / Origin) are attached to the OkHttp data source in `PlayerManager.play` / `zap`.  
   `app/src/main/java/com/nova/iptv/data/player/PlayerManager.kt`
-- [ ] AFR currently logs the preferred `Display.Mode` and sets `videoChangeFrameRateStrategy`. Actual `setPreferredDisplayModeId` on the Activity window is still a safe no-op on many sticks.  
+- [x] AFR selects a preferred `Display.Mode`, sets `videoChangeFrameRateStrategy`, and applies `preferredDisplayModeId` to the Activity window.  
   `PlayerManager.kt`, `MainActivity.kt`
-- [ ] Audio / subtitle track pickers in the player side sheet are stubs (they close the sheet). Bind to `Tracks` + `TrackSelectionOverride`.  
+- [x] Audio / subtitle track pickers are bound to `Tracks` + `TrackSelectionOverride`.  
   `app/src/main/java/com/nova/iptv/ui/player/PlayerScreen.kt`
-- [ ] 120 ms zap crossfade is not animated (prepare-in-place only).
-- [ ] Timeshift toast (“Provider does not support timeshift”) is not shown as a Snackbar yet.  
+- [x] Zap uses a 120 ms animated fade-through-black transition.
+- [x] Unsupported timeshift actions show a timed in-player Snackbar message.  
   `PlayerScreen.kt`
 
 ## Playlists / Xtream
 
-- [ ] `PlaylistImporter.refresh` re-imports under a new id then remaps. Pass the existing playlist id into `import*` to avoid the shuffle.  
+- [x] `PlaylistImporter.refresh` passes the existing playlist ID into each import path.  
   `app/src/main/java/com/nova/iptv/data/playlist/PlaylistImporter.kt`
-- [ ] Xtream `get_series_info` / `get_vod_info` is declared on `XtreamApi` but Detail does not yet fetch plot/cast on open (Room cache is used if present).  
+- [x] Detail fetches and caches Xtream movie/series metadata and series episodes on open.  
   `app/src/main/java/com/nova/iptv/ui/vod/VodScreens.kt`
-- [ ] TMDB fallback when `posterUrl` is blank and a key is set in settings is not implemented.  
+- [x] TMDB fallback fills blank movie/series artwork when a key is configured and caches the result.  
   `AppSettings.tmdbKey`
-- [ ] `get_short_epg` / `get_simple_data_table` ingest path is not wired (XMLTV + demo cover the guide).  
+- [x] Xtream `get_simple_data_table` / `get_short_epg` ingestion is wired with bounded concurrency and Room persistence.  
   `app/src/main/java/com/nova/iptv/data/remote/XtreamApi.kt`
 
 ## EPG / Guide
 
-- [ ] Guide cells use fractional `fillMaxWidth` + `offset`; a custom layout measuring `pxPerHour` would be more accurate at 2/12-hour windows.  
+- [x] Guide cells use a custom measured timeline layout with exact window clipping and pixel placement.  
   `app/src/main/java/com/nova/iptv/ui/guide/GuideScreen.kt`
-- [ ] Mini preview in the guide corner (settings.preview) is not mounted — Home owns the only preview player.  
+- [x] Guide mounts and lifecycle-manages a mini preview when `settings.preview` is enabled.  
   `GuideScreen.kt`
-- [ ] `XmltvChannelDao` has no `listAll`; auto-match falls back to vowel searches. Add `SELECT * FROM xmltv_channels`.  
+- [x] `XmltvChannelDao.listAll()` powers XMLTV auto-match without search heuristics.  
   `app/src/main/java/com/nova/iptv/data/local/dao/Daos.kt`
 
 ## Recordings
 
-- [ ] `RecordingService` copies the HTTP body as TS. HLS master playlists will need a segment follower / Media3 `DataSink` / Transformer.  
+- [x] `RecordingService` follows HLS master/media playlists and appends initialization maps and deduplicated segments.  
   `app/src/main/java/com/nova/iptv/data/recordings/RecordingService.kt`
-- [ ] Programme Info → Remind is not hooked to `ReminderWorker.schedule`.  
+- [x] Programme Info → Remind is hooked to `ReminderWorker.schedule`.  
   `GuideScreen.kt`, `ReminderWorker.kt`
-- [ ] Delete-watched completed files is not scheduled.
+- [x] Completed recording playback deletes the file and database row when “Delete watched” is enabled.
 
 ## Multi-view / Search
 
-- [ ] Long-press channel picker UI (favorites list overlay) is flagged (`pickerFor`) but the picker composable is not drawn.  
+- [x] Long-press channel picker displays favorites and replaces the selected tile.  
   `app/src/main/java/com/nova/iptv/ui/multiview/MultiViewScreen.kt`
-- [ ] Search IME should request the leanback keyboard explicitly on some OEM images.
+- [x] Search explicitly requests the TV software keyboard with text/search IME options.
 
 ## Settings / backup
 
-- [ ] Restore reapplies playlist metadata only, not channel rows (user must “Update now”).  
+- [x] Restore refreshes playlist rows, reapplies favorites, passwords, and backed-up settings.
   `app/src/main/java/com/nova/iptv/data/backup/BackupManager.kt`
-- [ ] Clear image + EPG cache action is not bound to a button handler.
-- [ ] Locked-groups editor (checkbox list) is missing; groups can be locked only via DataStore / demo Adult flag.
+- [x] Clear image + EPG cache is bound to a Settings action.
+- [x] Parental settings includes a locked-groups toggle list.
 
 ## Visual / store
 
-- [ ] Bundle `Outfit-Regular.ttf` / `Outfit-Medium.ttf` under `app/src/main/res/font/` (network was unavailable in CI). Theme currently uses `FontFamily.SansSerif`.  
+- [x] Bundle the Outfit variable font under `res/font` and map regular/medium theme weights to it.  
   `app/src/main/java/com/nova/iptv/ui/theme/Theme.kt`
-- [ ] Raster 320×180 banner + 512 icon + 1080×1920 poster should be exported from `store/` into `res/drawable` / Play Console. Vector banner ships today.  
+- [x] Raster banner, icon, and poster from `store/` are copied into `res/drawable` (Play Console upload remains a release operation).  
   `app/src/main/res/drawable/tv_banner.xml`
-- [ ] Extract remaining hardcoded English in Settings rows into `strings.xml`.  
+- [x] Settings row and diagnostics labels are sourced from `strings.xml`.  
   `app/src/main/java/com/nova/iptv/ui/settings/SettingsScreen.kt`
 
 ## Build / QA
 
-- [ ] Commit `gradle/wrapper/gradle-wrapper.jar` (generate with Android Studio or `gradle wrapper`).  
+- [x] `gradle/wrapper/gradle-wrapper.jar` is present.  
   `gradle/wrapper/`
-- [ ] Add a `:baselineprofile` module that records Home + Player on a rooted emulator instead of the static `baseline-prof.txt`.
-- [ ] Hilt `HiltTestApplication` for instrumentation tests that touch `@Inject` ViewModels.  
+- [x] Add a `:baselineprofile` module that records Home + Player and replaces the static profile.
+- [x] Instrumentation tests use a runner backed by `HiltTestApplication`.  
   `app/src/androidTest/`
-- [ ] 10k-channel scroll fps is manual-only (no Macrobenchmark yet).
+- [x] A Macrobenchmark measures frame timing while scrolling a benchmark-only 10k-channel demo catalog.

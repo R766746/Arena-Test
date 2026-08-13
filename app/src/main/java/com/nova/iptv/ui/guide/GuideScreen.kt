@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+
 package com.nova.iptv.ui.guide
 
 import android.view.KeyEvent
@@ -16,10 +18,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -27,19 +31,23 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.nova.iptv.R
 import com.nova.iptv.core.util.TimeFmt
 import com.nova.iptv.data.player.CatchupUrlBuilder
+import com.nova.iptv.data.player.PlayerManager
+import com.nova.iptv.data.player.headersFor
 import com.nova.iptv.domain.model.Channel
 import com.nova.iptv.domain.model.EpgRowHeight
 import com.nova.iptv.domain.model.GuideRow
@@ -56,6 +64,7 @@ import com.nova.iptv.ui.components.LogoTile
 import com.nova.iptv.ui.components.NovaTopBar
 import com.nova.iptv.ui.theme.LocalNovaPalette
 import com.nova.iptv.ui.theme.rowHeight
+import kotlin.math.roundToInt
 
 @Composable
 fun GuideRoute(
@@ -66,6 +75,7 @@ fun GuideRoute(
     val state by vm.state.collectAsStateWithLifecycle()
     GuideScreen(
         state = state,
+        playerManager = vm.playerManager,
         onSelect = vm::select,
         onDismiss = vm::dismiss,
         onWatchLive = { ch ->
@@ -87,6 +97,7 @@ fun GuideRoute(
 @Composable
 fun GuideScreen(
     state: GuideUiState,
+    playerManager: PlayerManager,
     onSelect: (Channel, Program?) -> Unit,
     onDismiss: () -> Unit,
     onWatchLive: (Channel) -> Unit,
@@ -130,7 +141,6 @@ fun GuideScreen(
                             hours = state.hours,
                             now = state.now,
                             rowHeight = rowH,
-                            pxPerHour = pxPerHour,
                             grid = state.settings.epgGridLines,
                             clock24h = state.settings.clock24h,
                             onProgram = { onSelect(row.channel, it) },
@@ -145,6 +155,16 @@ fun GuideScreen(
                         .offset(x = 230.dp + windowPx * nowOffset)
                         .background(colors.live),
                 )
+                if (state.settings.preview) {
+                    val previewChannel = state.selectedChannel
+                        ?: state.rows.firstOrNull { it.now != null }?.channel
+                        ?: state.rows.firstOrNull()?.channel
+                    GuidePreview(
+                        channel = previewChannel,
+                        playerManager = playerManager,
+                        modifier = Modifier.align(Alignment.TopEnd).width(300.dp).height(170.dp).padding(8.dp),
+                    )
+                }
             }
         }
     }
@@ -193,13 +213,11 @@ private fun GuideRowView(
     hours: Int,
     now: Long,
     rowHeight: Dp,
-    pxPerHour: Dp,
     grid: Boolean,
     clock24h: Boolean,
     onProgram: (Program) -> Unit,
 ) {
     val colors = LocalNovaPalette.current
-    val windowMs = hours * 3600_000f
     Row(Modifier.fillMaxWidth().height(rowHeight).padding(vertical = 2.dp)) {
         Row(
             Modifier.width(230.dp).fillMaxHeight().padding(end = 8.dp),
@@ -221,28 +239,80 @@ private fun GuideRowView(
                     }
                 }
             }
-            row.programs.forEach { p ->
-                val startFrac = ((p.startMs - windowStart) / windowMs).coerceIn(-0.1f, 1f)
-                val endFrac = ((p.endMs - windowStart) / windowMs).coerceIn(0f, 1.1f)
-                val frac = (endFrac - startFrac).coerceAtLeast(0.02f)
+            ProgramTimeline(
+                programs = row.programs,
+                windowStart = windowStart,
+                windowEnd = windowStart + hours * 3600_000L,
+                modifier = Modifier.fillMaxSize(),
+            ) { p ->
                 val past = p.isPast(now)
-                val minW = 48.dp
                 ProgramCell(
                     program = p,
                     past = past,
                     now = now,
                     clock24h = clock24h,
                     catchup = row.channel.catchup && past,
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(frac)
-                        .align(Alignment.CenterStart)
-                        .offset(x = with(LocalDensity.current) { (startFrac * (pxPerHour * hours).toPx()).toDp() })
-                        .padding(end = 3.dp),
+                    modifier = Modifier.fillMaxHeight().padding(end = 3.dp),
                     onClick = { onProgram(p) },
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ProgramTimeline(
+    programs: List<Program>,
+    windowStart: Long,
+    windowEnd: Long,
+    modifier: Modifier = Modifier,
+    content: @Composable (Program) -> Unit,
+) {
+    Layout(modifier = modifier, content = {
+        for (program in programs) content(program)
+    }) { measurables, constraints ->
+        val duration = (windowEnd - windowStart).coerceAtLeast(1L)
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val placements = measurables.mapIndexed { index, measurable ->
+            val program = programs[index]
+            val clippedStart = program.startMs.coerceIn(windowStart, windowEnd)
+            val clippedEnd = program.endMs.coerceIn(windowStart, windowEnd)
+            val x = (((clippedStart - windowStart).toDouble() / duration) * width).roundToInt()
+            val right = (((clippedEnd - windowStart).toDouble() / duration) * width).roundToInt()
+            val cellWidth = (right - x).coerceAtLeast(1)
+            x to measurable.measure(
+                androidx.compose.ui.unit.Constraints.fixed(cellWidth, height),
+            )
+        }
+        layout(width, height) {
+            placements.forEach { (x, placeable) -> placeable.placeRelative(x, 0) }
+        }
+    }
+}
+
+@Composable
+private fun GuidePreview(channel: Channel?, playerManager: PlayerManager, modifier: Modifier = Modifier) {
+    val preview = remember(channel?.id) {
+        channel?.let {
+            playerManager.previewPlayer(it.streamUrl, headersFor(it.userAgent, it.referrer))
+        }
+    }
+    DisposableEffect(preview) {
+        onDispose { playerManager.releasePreview() }
+    }
+    Box(modifier.clip(RoundedCornerShape(8.dp)).background(Color.Black)) {
+        AndroidView(
+            factory = { context ->
+                PlayerView(context).apply {
+                    useController = false
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    player = preview
+                }
+            },
+            update = { view -> view.player = preview },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 

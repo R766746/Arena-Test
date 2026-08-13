@@ -13,11 +13,17 @@ import com.nova.iptv.domain.model.Episode
 import com.nova.iptv.domain.model.ImportProgress
 import com.nova.iptv.domain.model.Playlist
 import com.nova.iptv.domain.model.PlaylistType
+import com.nova.iptv.domain.model.Program
 import com.nova.iptv.domain.model.VodItem
 import com.nova.iptv.domain.model.VodKind
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.buffer
@@ -42,9 +48,10 @@ class PlaylistImporter @Inject constructor(
         url: String,
         epgUrl: String,
         userAgent: String,
+        existingId: String? = null,
         onProgress: (ImportProgress) -> Unit,
     ): Result<Playlist> = withContext(Dispatchers.IO) {
-        val id = newId()
+        val id = existingId ?: newId()
         runCatching {
             onProgress(ImportProgress(ImportProgress.Stage.CONNECTING))
             val ua = userAgent.ifBlank { Playlist.DEFAULT_UA }
@@ -81,9 +88,10 @@ class PlaylistImporter @Inject constructor(
     suspend fun importLocalFile(
         name: String,
         uri: String,
+        existingId: String? = null,
         onProgress: (ImportProgress) -> Unit,
     ): Result<Playlist> = withContext(Dispatchers.IO) {
-        val id = newId()
+        val id = existingId ?: newId()
         runCatching {
             onProgress(ImportProgress(ImportProgress.Stage.CONNECTING))
             val parsedUri = Uri.parse(uri)
@@ -115,9 +123,10 @@ class PlaylistImporter @Inject constructor(
         portal: String,
         username: String,
         password: String,
+        existingId: String? = null,
         onProgress: (ImportProgress) -> Unit,
     ): Result<Playlist> = withContext(Dispatchers.IO) {
-        val id = newId()
+        val id = existingId ?: newId()
         runCatching {
             onProgress(ImportProgress(ImportProgress.Stage.CONNECTING))
             val base = portal.trim().trimEnd('/')
@@ -219,7 +228,11 @@ class PlaylistImporter @Inject constructor(
                 vodItems,
                 onProgress,
                 password,
-            )
+            ).also {
+                if (settings.settings.value.updateEpgOnPlaylistChange) {
+                    ingestXtreamEpg(api, username, password, channels)
+                }
+            }
         }.recoverCatching { mapError(it) }
     }
 
@@ -252,26 +265,20 @@ class PlaylistImporter @Inject constructor(
     suspend fun refresh(playlist: Playlist, onProgress: (ImportProgress) -> Unit = {}): Result<Playlist> {
         return when (playlist.type) {
             PlaylistType.DEMO -> Result.success(playlist)
-            PlaylistType.M3U -> importRemoteM3u(playlist.name, playlist.url, playlist.epgUrl, playlist.userAgent, onProgress)
-                .map { it.copy(id = playlist.id) }
-                .onSuccess { saved ->
-                    // Re-import used a new id; for refresh we rewrite under existing id.
-                }
-            PlaylistType.FILE -> importLocalFile(playlist.name, playlist.url, onProgress)
+            PlaylistType.M3U -> importRemoteM3u(
+                playlist.name, playlist.url, playlist.epgUrl, playlist.userAgent,
+                existingId = playlist.id, onProgress = onProgress,
+            )
+            PlaylistType.FILE -> importLocalFile(
+                playlist.name, playlist.url, existingId = playlist.id, onProgress = onProgress,
+            )
             PlaylistType.XTREAM -> {
                 val pass = repo.resolvedPassword(playlist)
-                importXtream(playlist.name, playlist.url, playlist.username, pass, onProgress)
+                importXtream(
+                    playlist.name, playlist.url, playlist.username, pass,
+                    existingId = playlist.id, onProgress = onProgress,
+                )
             }
-        }.mapCatching { imported ->
-            // Keep original id so favorites survive. saveImported already merges by streamUrl+name
-            // but import* generated a new id. Re-save under old id.
-            if (imported.id != playlist.id) {
-                val ch = repo.snapshotChannels(imported.id).map { it.copy(playlistId = playlist.id, id = it.id.replace(imported.id, playlist.id)) }
-                val movies = emptyList<VodItem>()
-                repo.deletePlaylist(imported.id)
-                repo.saveImported(playlist.copy(lastUpdate = System.currentTimeMillis()), ch, movies, plaintextPassword = "")
-                playlist
-            } else imported
         }
     }
 
@@ -314,6 +321,51 @@ class PlaylistImporter @Inject constructor(
             2 -> parts[0].toIntOrNull() ?: 0
             else -> raw.filter { it.isDigit() }.toIntOrNull() ?: 0
         }
+    }
+
+    private suspend fun ingestXtreamEpg(
+        api: String,
+        username: String,
+        password: String,
+        channels: List<Channel>,
+    ) = coroutineScope {
+        val permits = Semaphore(8)
+        val programs = channels.map { channel ->
+            async(Dispatchers.IO) {
+                permits.withPermit {
+                    val sid = channel.xtreamStreamId.takeIf { it.isNotBlank() } ?: return@withPermit emptyList()
+                    val response = runCatching { xtreamApi.simpleEpg(api, username, password, streamId = sid) }
+                        .getOrElse {
+                            runCatching { xtreamApi.shortEpg(api, username, password, streamId = sid) }.getOrNull()
+                                ?: return@withPermit emptyList()
+                        }
+                    response.listings.orEmpty().mapNotNull { listing ->
+                        val start = listing.startTs?.toLongOrNull()?.times(1000L) ?: return@mapNotNull null
+                        val end = listing.stopTs?.toLongOrNull()?.times(1000L) ?: return@mapNotNull null
+                        if (end <= start) return@mapNotNull null
+                        Program(
+                            id = "xtream:${channel.id}:$start",
+                            channelId = channel.id,
+                            title = decodeXtreamText(listing.title).ifBlank { "Programme" },
+                            description = decodeXtreamText(listing.description),
+                            startMs = start,
+                            endMs = end,
+                            catchup = channel.catchup && end < System.currentTimeMillis(),
+                        )
+                    }
+                }
+            }
+        }.awaitAll().flatten()
+        if (programs.isNotEmpty()) epg.ingestPrograms(programs)
+    }
+
+    private fun decodeXtreamText(value: String?): String {
+        val raw = value.orEmpty()
+        if (raw.isBlank()) return ""
+        return runCatching {
+            val decoded = android.util.Base64.decode(raw, android.util.Base64.DEFAULT).decodeToString()
+            decoded.takeIf { it.all { c -> !c.isISOControl() || c == '\n' || c == '\r' || c == '\t' } } ?: raw
+        }.getOrDefault(raw)
     }
 }
 

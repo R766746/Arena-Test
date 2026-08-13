@@ -1,9 +1,13 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+
 package com.nova.iptv.ui.player
 
 import android.view.KeyEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -66,6 +71,7 @@ fun PlayerRoute(
     vm: PlayerViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val noTimeshift = stringResource(R.string.player_no_timeshift)
     LaunchedEffect(target.id, target.kind, target.url) { vm.bind(target) }
     PlayerScreen(
         state = state,
@@ -113,8 +119,7 @@ fun PlayerRoute(
                     val p = vm.playerManager.mainPlayer()
                     if (p.isPlaying) {
                         if (!state.seekable && p.isCurrentMediaItemLive && !p.isCurrentMediaItemSeekable) {
-                            // toast via overlay message
-                            vm.bumpOverlay()
+                            vm.showTimeshiftUnavailable(noTimeshift)
                         } else p.pause()
                     } else p.play()
                     true
@@ -161,9 +166,18 @@ fun PlayerScreen(
 ) {
     val colors = LocalNovaPalette.current
     var subMenu by remember { mutableStateOf<String?>(null) }
+    val zapFade = remember { Animatable(0f) }
 
     LaunchedEffect(state.sheet) {
         if (!state.sheet) subMenu = null
+    }
+
+    LaunchedEffect(state.zapTransition) {
+        if (state.zapTransition != 0L) {
+            zapFade.snapTo(0f)
+            zapFade.animateTo(1f, tween(60))
+            zapFade.animateTo(0f, tween(60))
+        }
     }
 
     Box(
@@ -175,6 +189,10 @@ fun PlayerScreen(
             },
     ) {
         playerView()
+
+        if (zapFade.value > 0f) {
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = zapFade.value }.background(Color.Black))
+        }
 
         AnimatedVisibility(state.overlay, enter = fadeIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxSize()) {
@@ -245,6 +263,22 @@ fun PlayerScreen(
         if (state.zapDigits.isNotBlank()) {
             Box(Modifier.align(Alignment.Center).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(0.7f)).padding(horizontal = 28.dp, vertical = 16.dp)) {
                 Text(state.zapDigits, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+
+        AnimatedVisibility(
+            visible = state.message != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp),
+        ) {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.surface2)
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+            ) {
+                Text(state.message.orEmpty(), color = colors.onBackground, fontSize = 14.sp)
             }
         }
 

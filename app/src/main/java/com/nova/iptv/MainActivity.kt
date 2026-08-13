@@ -11,10 +11,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import com.nova.iptv.data.player.PlayerManager
 import com.nova.iptv.nav.NovaNav
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -25,6 +27,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         hideSystemBars()
+        lifecycleScope.launch {
+            playerManager.preferredDisplayModeId.collect { modeId ->
+                if (Build.VERSION.SDK_INT >= 23 && window.attributes.preferredDisplayModeId != modeId) {
+                    window.attributes = window.attributes.apply { preferredDisplayModeId = modeId }
+                }
+            }
+        }
         setContent { NovaApp() }
     }
 

@@ -33,7 +33,7 @@ class ImportPlaylistUseCase @Inject constructor(
         epgUrl: String,
         userAgent: String,
         onProgress: (ImportProgress) -> Unit,
-    ): Result<Playlist> = importer.importRemoteM3u(name, url, epgUrl, userAgent, onProgress)
+    ): Result<Playlist> = importer.importRemoteM3u(name, url, epgUrl, userAgent, onProgress = onProgress)
 
     suspend fun importXtream(
         name: String,
@@ -41,13 +41,13 @@ class ImportPlaylistUseCase @Inject constructor(
         username: String,
         password: String,
         onProgress: (ImportProgress) -> Unit,
-    ): Result<Playlist> = importer.importXtream(name, portal, username, password, onProgress)
+    ): Result<Playlist> = importer.importXtream(name, portal, username, password, onProgress = onProgress)
 
     suspend fun importFile(
         name: String,
         uri: String,
         onProgress: (ImportProgress) -> Unit,
-    ): Result<Playlist> = importer.importLocalFile(name, uri, onProgress)
+    ): Result<Playlist> = importer.importLocalFile(name, uri, onProgress = onProgress)
 }
 
 @Singleton

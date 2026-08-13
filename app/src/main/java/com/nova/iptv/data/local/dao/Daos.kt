@@ -117,6 +117,8 @@ interface ChannelDao {
 
 @Dao
 interface ProgramDao {
+    @Query("DELETE FROM programs")
+    suspend fun deleteAll()
     @Query(
         """
         SELECT * FROM programs
@@ -325,6 +327,11 @@ interface EpgSourceDao {
 
 @Dao
 interface XmltvChannelDao {
+    @Query("DELETE FROM xmltv_channels")
+    suspend fun deleteAll()
+    @Query("SELECT * FROM xmltv_channels")
+    suspend fun listAll(): List<XmltvChannelEntity>
+
     @Query("SELECT * FROM xmltv_channels WHERE displayName LIKE '%' || :q || '%' LIMIT 40")
     suspend fun search(q: String): List<XmltvChannelEntity>
 

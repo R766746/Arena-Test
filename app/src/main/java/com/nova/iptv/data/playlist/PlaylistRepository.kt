@@ -54,6 +54,7 @@ interface PlaylistRepository {
     suspend fun setEpgId(channelId: String, epgId: String)
     suspend fun setWatchlist(id: String, flag: Boolean)
     suspend fun setRating(id: String, rating: Float)
+    suspend fun saveVodDetails(item: VodItem, episodes: List<Episode> = emptyList())
     suspend fun recordWatch(history: WatchHistory)
     suspend fun genres(playlistId: String, kind: String): List<String>
     suspend fun resolvedPassword(playlist: Playlist): String
@@ -205,6 +206,23 @@ class PlaylistRepositoryImpl @Inject constructor(
     override suspend fun setWatchlist(id: String, flag: Boolean) = db.vod().setWatchlist(id, flag)
 
     override suspend fun setRating(id: String, rating: Float) = db.vod().setRating(id, rating)
+
+    override suspend fun saveVodDetails(item: VodItem, episodes: List<Episode>) {
+        val existing = db.vod().byId(item.id)
+        db.vod().upsertAll(
+            listOf(
+                VodEntity.from(item).copy(
+                    pk = existing?.pk ?: 0,
+                    watchlist = existing?.watchlist ?: item.watchlist,
+                    localRating = existing?.localRating ?: item.localRating,
+                ),
+            ),
+        )
+        if (episodes.isNotEmpty()) {
+            db.episodes().deleteForSeries(item.id)
+            db.episodes().upsertAll(episodes.map { EpisodeEntity.from(it) })
+        }
+    }
 
     override suspend fun recordWatch(history: WatchHistory) {
         val existing = db.history().byRef(history.refId)

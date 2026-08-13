@@ -29,6 +29,7 @@ interface EpgRepository {
     suspend fun searchTitles(query: String, fromMs: Long, toMs: Long): List<Program>
     suspend fun ingestUrl(playlistId: String, url: String, timeShiftHours: Int, sourceName: String = ""): Result<Int>
     suspend fun ingestDemo(playlistId: String): Int
+    suspend fun ingestPrograms(programs: List<Program>): Int
     suspend fun autoMatch(playlistId: String): Int
     suspend fun assignEpg(channelId: String, xmltvId: String)
     suspend fun searchXmltvNames(query: String): List<Pair<String, String>>
@@ -38,6 +39,7 @@ interface EpgRepository {
     suspend fun prune(pastDays: Int): Int
     suspend fun lastIngestDurationMs(): Long
     suspend fun programById(id: String): Program?
+    suspend fun clearCache()
 }
 
 @Singleton
@@ -156,17 +158,19 @@ class EpgRepositoryImpl @Inject constructor(
         return programs.size
     }
 
+    override suspend fun ingestPrograms(programs: List<Program>): Int = withContext(Dispatchers.IO) {
+        programs.chunked(500).forEach { chunk ->
+            db.programs().upsertAll(chunk.map { ProgramEntity.from(it) })
+            yield()
+        }
+        programs.size
+    }
+
     override suspend fun autoMatch(playlistId: String): Int {
         val channels = db.channels().byPlaylist(playlistId).map { it.toModel() }
-        val xml = db.xmltvChannels().search("").ifEmpty {
-            // search with empty may return nothing; pull via a broad like
-            emptyList()
-        }.map { XmltvChannel(it.xmltvId, listOf(it.displayName), it.iconUrl) }
-        // Fallback: we don't have a list-all query; use search with common vowels
-        val all = listOf("a", "e", "i", "o", "the", "news", "hd").flatMap { db.xmltvChannels().search(it) }
-            .distinctBy { it.xmltvId + it.displayName }
-            .map { XmltvChannel(it.xmltvId, listOf(it.displayName), it.iconUrl) }
-            .ifEmpty { xml }
+        val all = db.xmltvChannels().listAll()
+            .groupBy { it.xmltvId }
+            .map { (id, rows) -> XmltvChannel(id, rows.map { it.displayName }, rows.first().iconUrl) }
         val matches = matcher.match(channels, all, settings.settings.value.nameStripTokens)
         matches.forEach { db.channels().setEpgId(it.channelId, it.xmltvId) }
         return matches.size
@@ -212,6 +216,11 @@ class EpgRepositoryImpl @Inject constructor(
     override suspend fun lastIngestDurationMs(): Long = db.diagnostics().get()?.lastEpgDurationMs ?: 0L
 
     override suspend fun programById(id: String): Program? = db.programs().byId(id)?.toModel()
+
+    override suspend fun clearCache() {
+        db.programs().deleteAll()
+        db.xmltvChannels().deleteAll()
+    }
 }
 
 class FakeEpgRepository : EpgRepository {
@@ -238,6 +247,10 @@ class FakeEpgRepository : EpgRepository {
         Result.success(programs.value.size)
 
     override suspend fun ingestDemo(playlistId: String) = programs.value.size
+    override suspend fun ingestPrograms(programs: List<Program>): Int {
+        this.programs.value = (this.programs.value + programs).distinctBy { it.id }
+        return programs.size
+    }
     override suspend fun autoMatch(playlistId: String) = 0
     override suspend fun assignEpg(channelId: String, xmltvId: String) = Unit
     override suspend fun searchXmltvNames(query: String) = emptyList<Pair<String, String>>()
@@ -251,4 +264,5 @@ class FakeEpgRepository : EpgRepository {
     override suspend fun prune(pastDays: Int) = 0
     override suspend fun lastIngestDurationMs() = 0L
     override suspend fun programById(id: String) = programs.value.firstOrNull { it.id == id }
+    override suspend fun clearCache() { programs.value = emptyList() }
 }

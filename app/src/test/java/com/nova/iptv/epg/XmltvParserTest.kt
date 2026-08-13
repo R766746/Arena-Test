@@ -1,6 +1,9 @@
 package com.nova.iptv.epg
 
 import com.nova.iptv.core.util.TimeFmt
+import com.nova.iptv.data.epg.EpgMatcher
+import com.nova.iptv.data.epg.MatchResult
+import com.nova.iptv.data.epg.XmltvChannel
 import com.nova.iptv.data.epg.XmltvParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

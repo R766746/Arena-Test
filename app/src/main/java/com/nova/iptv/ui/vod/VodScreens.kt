@@ -39,9 +39,11 @@ import com.nova.iptv.R
 import com.nova.iptv.data.local.SettingsRepository
 import com.nova.iptv.data.playlist.PlaylistRepository
 import com.nova.iptv.data.remote.XtreamApi
+import com.nova.iptv.data.remote.TmdbApi
 import com.nova.iptv.domain.model.Episode
 import com.nova.iptv.domain.model.VodItem
 import com.nova.iptv.domain.model.VodKind
+import com.nova.iptv.domain.model.PlaylistType
 import com.nova.iptv.nav.PlayTarget
 import com.nova.iptv.nav.TvLazyColumn
 import com.nova.iptv.nav.TvLazyVerticalGrid
@@ -81,6 +83,8 @@ class VodGridViewModel @Inject constructor(
 class DetailViewModel @Inject constructor(
     private val repo: PlaylistRepository,
     private val xtream: XtreamApi,
+    private val tmdb: TmdbApi,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
     var item by mutableStateOf<VodItem?>(null)
     var episodes by mutableStateOf<List<Episode>>(emptyList())
@@ -91,8 +95,100 @@ class DetailViewModel @Inject constructor(
             val vod = repo.getVod(id) ?: return@launch
             item = vod
             episodes = repo.episodes(id).first()
-            val all = repo.vod(vod.playlistId, vod.kind.name).first()
-            similar = all.filter { it.id != id && it.genres.any { g -> g in vod.genres } }.take(8)
+            enrichFromXtream(vod)
+            enrichArtworkFromTmdb(item ?: vod)
+            val enriched = item ?: vod
+            val all = repo.vod(enriched.playlistId, enriched.kind.name).first()
+            similar = all.filter { it.id != id && it.genres.any { g -> g in enriched.genres } }.take(8)
+        }
+    }
+
+    private suspend fun enrichFromXtream(vod: VodItem) {
+        if (vod.xtreamId.isBlank()) return
+        val playlist = repo.getPlaylist(vod.playlistId) ?: return
+        if (playlist.type != PlaylistType.XTREAM) return
+        val password = repo.resolvedPassword(playlist)
+        if (password.isBlank()) return
+        val base = playlist.url.trimEnd('/')
+        val api = "$base/player_api.php"
+        runCatching {
+            if (vod.kind == VodKind.MOVIE) {
+                val info = xtream.vodInfo(api, playlist.username, password, vodId = vod.xtreamId).info
+                    ?: return@runCatching
+                val updated = vod.copy(
+                    description = info.plot.orEmpty().ifBlank { vod.description },
+                    cast = info.cast.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { vod.cast },
+                    director = info.director.orEmpty().ifBlank { vod.director },
+                    genres = info.genre.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { vod.genres },
+                    durationMin = durationMinutes(info.duration).takeIf { it > 0 } ?: vod.durationMin,
+                    posterUrl = info.movie_image.orEmpty().ifBlank { vod.posterUrl },
+                    backdropUrl = info.backdrop_path?.firstOrNull().orEmpty().ifBlank { vod.backdropUrl },
+                    rating = info.rating.orEmpty().ifBlank { vod.rating },
+                )
+                repo.saveVodDetails(updated)
+                item = updated
+            } else {
+                val result = xtream.seriesInfo(api, playlist.username, password, seriesId = vod.xtreamId)
+                val info = result.info
+                val updated = vod.copy(
+                    description = info?.plot.orEmpty().ifBlank { vod.description },
+                    cast = info?.cast.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { vod.cast },
+                    director = info?.director.orEmpty().ifBlank { vod.director },
+                    genres = info?.genre.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { vod.genres },
+                    posterUrl = info?.cover.orEmpty().ifBlank { vod.posterUrl },
+                    backdropUrl = info?.backdrop_path?.firstOrNull().orEmpty().ifBlank { vod.backdropUrl },
+                    rating = info?.rating.orEmpty().ifBlank { vod.rating },
+                )
+                val fetchedEpisodes = result.episodes.orEmpty().flatMap { (seasonKey, list) ->
+                    list.mapIndexed { index, ep ->
+                        val episodeId = ep.id.orEmpty()
+                        val ext = ep.container_extension.orEmpty().ifBlank { "mp4" }
+                        Episode(
+                            id = "${vod.id}:episode:$episodeId",
+                            seriesId = vod.id,
+                            season = ep.season ?: seasonKey.toIntOrNull() ?: 0,
+                            episode = ep.episodeNum ?: index + 1,
+                            title = ep.title.orEmpty().ifBlank { "Episode ${index + 1}" },
+                            durationMin = durationMinutes(ep.duration),
+                            description = ep.plot.orEmpty(),
+                            streamUrl = "$base/series/${playlist.username}/$password/$episodeId.$ext",
+                        )
+                    }
+                }
+                repo.saveVodDetails(updated, fetchedEpisodes)
+                item = updated
+                episodes = fetchedEpisodes
+            }
+        }
+    }
+
+    private fun durationMinutes(raw: String?): Int {
+        val parts = raw.orEmpty().split(':')
+        return when (parts.size) {
+            3 -> (parts[0].toIntOrNull() ?: 0) * 60 + (parts[1].toIntOrNull() ?: 0)
+            2 -> parts[0].toIntOrNull() ?: 0
+            else -> raw.orEmpty().filter(Char::isDigit).toIntOrNull() ?: 0
+        }
+    }
+
+    private suspend fun enrichArtworkFromTmdb(vod: VodItem) {
+        if (vod.posterUrl.isNotBlank()) return
+        val key = settings.settings.value.tmdbKey.trim()
+        if (key.isBlank()) return
+        runCatching {
+            val result = if (vod.kind == VodKind.MOVIE) {
+                tmdb.searchMovies(key, vod.title, vod.year.takeIf { it > 0 })
+            } else {
+                tmdb.searchSeries(key, vod.title, vod.year.takeIf { it > 0 })
+            }.results.firstOrNull { !it.posterPath.isNullOrBlank() } ?: return@runCatching
+            val updated = vod.copy(
+                posterUrl = "https://image.tmdb.org/t/p/w500${result.posterPath}",
+                backdropUrl = result.backdropPath?.let { "https://image.tmdb.org/t/p/w1280$it" }
+                    .orEmpty().ifBlank { vod.backdropUrl },
+                tmdbId = result.id.toString(),
+            )
+            repo.saveVodDetails(updated, episodes)
+            item = updated
         }
     }
 

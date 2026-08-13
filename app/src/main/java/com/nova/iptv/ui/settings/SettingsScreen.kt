@@ -45,6 +45,8 @@ import com.nova.iptv.BuildConfig
 import com.nova.iptv.R
 import com.nova.iptv.core.perf.LowRam
 import com.nova.iptv.core.perf.PlayerBudget
+import coil.ImageLoader
+import coil.annotation.ExperimentalCoilApi
 import com.nova.iptv.core.util.formatBytes
 import com.nova.iptv.data.backup.BackupManager
 import com.nova.iptv.data.epg.EpgRefreshWorker
@@ -78,6 +80,7 @@ import com.nova.iptv.ui.theme.LocalNovaPalette
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -92,8 +95,12 @@ class SettingsViewModel @Inject constructor(
     private val epg: EpgRepository,
     private val backup: BackupManager,
     private val budget: PlayerBudget,
+    private val imageLoader: ImageLoader,
 ) : ViewModel() {
     val playlistsFlow = playlists.playlists().stateIn(viewModelScope, SharingStarted.WhileSubscribed(4_000), emptyList())
+    val groups = settings.settings.flatMapLatest {
+        playlists.groups(it.lastPlaylistId.ifBlank { Playlist.DEMO_ID })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(4_000), emptyList())
 
     fun update(t: (AppSettings) -> AppSettings) = viewModelScope.launch { settings.update(t) }
 
@@ -108,6 +115,13 @@ class SettingsViewModel @Inject constructor(
     fun restore(uri: Uri) = viewModelScope.launch { backup.restore(uri) }
 
     fun refreshEpg(ctx: Context) = EpgRefreshWorker.enqueueNow(ctx)
+
+    @OptIn(ExperimentalCoilApi::class)
+    fun clearCaches() = viewModelScope.launch {
+        imageLoader.memoryCache?.clear()
+        imageLoader.diskCache?.clear()
+        epg.clearCache()
+    }
 
     suspend fun diagnostics(): DiagnosticsSnapshot {
         val rt = Runtime.getRuntime()
@@ -136,9 +150,11 @@ fun SettingsRoute(
 ) {
     val settings by vm.settings.settings.collectAsStateWithLifecycle()
     val lists by vm.playlistsFlow.collectAsStateWithLifecycle()
+    val groups by vm.groups.collectAsStateWithLifecycle()
     SettingsScreen(
         settings = settings,
         playlists = lists,
+        groups = groups,
         onUpdate = vm::update,
         onAdd = onAddPlaylist,
         onRefresh = vm::refresh,
@@ -148,6 +164,7 @@ fun SettingsRoute(
         onExport = vm::export,
         onRestore = vm::restore,
         onEpgNow = vm::refreshEpg,
+        onClearCaches = vm::clearCaches,
         onDiagnostics = onDiagnostics,
         onReset = { vm.update { AppSettings() } },
     )
@@ -157,6 +174,7 @@ fun SettingsRoute(
 fun SettingsScreen(
     settings: AppSettings,
     playlists: List<Playlist>,
+    groups: List<String>,
     onUpdate: ((AppSettings) -> AppSettings) -> Unit,
     onAdd: () -> Unit,
     onRefresh: (Playlist) -> Unit,
@@ -166,6 +184,7 @@ fun SettingsScreen(
     onExport: (Uri, Boolean) -> Unit,
     onRestore: (Uri) -> Unit,
     onEpgNow: (Context) -> Unit,
+    onClearCaches: () -> Unit,
     onDiagnostics: () -> Unit,
     onReset: () -> Unit,
 ) {
@@ -227,16 +246,16 @@ fun SettingsScreen(
                     when (section) {
                         SettingsSection.PLAYLISTS -> PlaylistsPane(playlists, onAdd, onRefresh, onDelete, onUpdate)
                         SettingsSection.EPG -> {
-                            ToggleRow("Update on start", settings.updateEpgOnStart) { onUpdate { s -> s.copy(updateEpgOnStart = it) } }
-                            ToggleRow("Update on playlist change", settings.updateEpgOnPlaylistChange) { onUpdate { s -> s.copy(updateEpgOnPlaylistChange = it) } }
-                            CycleRow("Timeline hours", listOf(2, 4, 6, 12), settings.epgHours) { onUpdate { s -> s.copy(epgHours = it) } }
-                            CycleRow("Past days", listOf(1, 2, 3, 7), settings.epgPastDays) { onUpdate { s -> s.copy(epgPastDays = it) } }
-                            CycleRow("Time shift (h)", listOf(-6, -3, 0, 1, 3, 6), settings.epgTimeShiftHours) { onUpdate { s -> s.copy(epgTimeShiftHours = it) } }
-                            FocusButton(label = "Refresh EPG now", onClick = { onEpgNow(ctx) })
+                            ToggleRow(stringResource(R.string.epg_update_start), settings.updateEpgOnStart) { onUpdate { s -> s.copy(updateEpgOnStart = it) } }
+                            ToggleRow(stringResource(R.string.epg_update_playlist), settings.updateEpgOnPlaylistChange) { onUpdate { s -> s.copy(updateEpgOnPlaylistChange = it) } }
+                            CycleRow(stringResource(R.string.guide_hours), listOf(2, 4, 6, 12), settings.epgHours) { onUpdate { s -> s.copy(epgHours = it) } }
+                            CycleRow(stringResource(R.string.epg_past_days), listOf(1, 2, 3, 7), settings.epgPastDays) { onUpdate { s -> s.copy(epgPastDays = it) } }
+                            CycleRow(stringResource(R.string.epg_timeshift), listOf(-6, -3, 0, 1, 3, 6), settings.epgTimeShiftHours) { onUpdate { s -> s.copy(epgTimeShiftHours = it) } }
+                            FocusButton(label = stringResource(R.string.epg_refresh_now), onClick = { onEpgNow(ctx) })
                         }
                         SettingsSection.APPEARANCE -> {
-                            CycleRow("Theme", ThemeName.entries.toList(), settings.theme) { onUpdate { s -> s.copy(theme = it) } }
-                            Text("Accent", color = colors.muted, fontSize = 11.sp, letterSpacing = 1.2.sp)
+                            CycleRow(stringResource(R.string.appearance_theme), ThemeName.entries.toList(), settings.theme) { onUpdate { s -> s.copy(theme = it) } }
+                            Text(stringResource(R.string.accent_color), color = colors.muted, fontSize = 11.sp, letterSpacing = 1.2.sp)
                             Row {
                                 AccentSwatches.forEach { argb ->
                                     Box(
@@ -250,42 +269,51 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-                            CycleRow("List style", ListStyle.entries.toList(), settings.listStyle) { onUpdate { s -> s.copy(listStyle = it) } }
-                            ToggleRow("Channel numbers", settings.showNumbers) { onUpdate { s -> s.copy(showNumbers = it) } }
-                            ToggleRow("24-hour clock", settings.clock24h) { onUpdate { s -> s.copy(clock24h = it) } }
-                            CycleRow("Animation", AnimSpeed.entries.toList(), settings.animSpeed) { onUpdate { s -> s.copy(animSpeed = it) } }
-                            CycleRow("Font scale", listOf(0.9f, 1.0f, 1.1f, 1.25f), settings.fontScale) { onUpdate { s -> s.copy(fontScale = it) } }
+                            CycleRow(stringResource(R.string.list_style), ListStyle.entries.toList(), settings.listStyle) { onUpdate { s -> s.copy(listStyle = it) } }
+                            ToggleRow(stringResource(R.string.show_numbers), settings.showNumbers) { onUpdate { s -> s.copy(showNumbers = it) } }
+                            ToggleRow(stringResource(R.string.clock_24h), settings.clock24h) { onUpdate { s -> s.copy(clock24h = it) } }
+                            CycleRow(stringResource(R.string.anim_speed), AnimSpeed.entries.toList(), settings.animSpeed) { onUpdate { s -> s.copy(animSpeed = it) } }
+                            CycleRow(stringResource(R.string.font_scale), listOf(0.9f, 1.0f, 1.1f, 1.25f), settings.fontScale) { onUpdate { s -> s.copy(fontScale = it) } }
                         }
                         SettingsSection.GUIDE -> {
-                            CycleRow("Hours", listOf(2, 4, 6, 12), settings.epgHours) { onUpdate { s -> s.copy(epgHours = it) } }
-                            CycleRow("Row height", EpgRowHeight.entries.toList(), settings.epgRowHeight) { onUpdate { s -> s.copy(epgRowHeight = it) } }
-                            ToggleRow("Grid lines", settings.epgGridLines) { onUpdate { s -> s.copy(epgGridLines = it) } }
-                            ToggleRow("Preview", settings.preview) { onUpdate { s -> s.copy(preview = it) } }
-                            ToggleRow("Autoplay preview", settings.autoplayPreview) { onUpdate { s -> s.copy(autoplayPreview = it) } }
+                            CycleRow(stringResource(R.string.guide_hours), listOf(2, 4, 6, 12), settings.epgHours) { onUpdate { s -> s.copy(epgHours = it) } }
+                            CycleRow(stringResource(R.string.guide_row_height), EpgRowHeight.entries.toList(), settings.epgRowHeight) { onUpdate { s -> s.copy(epgRowHeight = it) } }
+                            ToggleRow(stringResource(R.string.guide_grid_lines), settings.epgGridLines) { onUpdate { s -> s.copy(epgGridLines = it) } }
+                            ToggleRow(stringResource(R.string.guide_preview), settings.preview) { onUpdate { s -> s.copy(preview = it) } }
+                            ToggleRow(stringResource(R.string.guide_autoplay), settings.autoplayPreview) { onUpdate { s -> s.copy(autoplayPreview = it) } }
                         }
                         SettingsSection.PLAYER -> {
-                            CycleRow("Overlay (s)", listOf(3, 5, 8, 12), settings.overlayTimeoutSec) { onUpdate { s -> s.copy(overlayTimeoutSec = it) } }
-                            CycleRow("Buffer", BufferSize.entries.toList(), settings.bufferSize) { onUpdate { s -> s.copy(bufferSize = it) } }
-                            ToggleRow("Auto frame rate", settings.afr) { onUpdate { s -> s.copy(afr = it) } }
-                            CycleRow("Aspect", AspectMode.entries.toList(), settings.aspect) { onUpdate { s -> s.copy(aspect = it) } }
-                            CycleRow("Seek step", listOf(5, 10, 15, 30), settings.seekStepSec) { onUpdate { s -> s.copy(seekStepSec = it) } }
-                            CycleRow("Subtitle size", listOf(14, 18, 22, 28), settings.subtitleSize) { onUpdate { s -> s.copy(subtitleSize = it) } }
+                            CycleRow(stringResource(R.string.player_overlay_timeout), listOf(3, 5, 8, 12), settings.overlayTimeoutSec) { onUpdate { s -> s.copy(overlayTimeoutSec = it) } }
+                            CycleRow(stringResource(R.string.player_buffer), BufferSize.entries.toList(), settings.bufferSize) { onUpdate { s -> s.copy(bufferSize = it) } }
+                            ToggleRow(stringResource(R.string.player_afr), settings.afr) { onUpdate { s -> s.copy(afr = it) } }
+                            CycleRow(stringResource(R.string.player_aspect), AspectMode.entries.toList(), settings.aspect) { onUpdate { s -> s.copy(aspect = it) } }
+                            CycleRow(stringResource(R.string.player_seek), listOf(5, 10, 15, 30), settings.seekStepSec) { onUpdate { s -> s.copy(seekStepSec = it) } }
+                            CycleRow(stringResource(R.string.player_sub_size), listOf(14, 18, 22, 28), settings.subtitleSize) { onUpdate { s -> s.copy(subtitleSize = it) } }
                         }
                         SettingsSection.PARENTAL -> {
-                            ToggleRow("Enable PIN", settings.parentalEnabled) { onUpdate { s -> s.copy(parentalEnabled = it) } }
-                            FocusButton(label = "Set PIN 0000", onClick = { onPin("0000") })
-                            ToggleRow("Lock settings", settings.lockSettings) { onUpdate { s -> s.copy(lockSettings = it) } }
+                            ToggleRow(stringResource(R.string.parental_enable), settings.parentalEnabled) { onUpdate { s -> s.copy(parentalEnabled = it) } }
+                            FocusButton(label = stringResource(R.string.parental_set_default), onClick = { onPin("0000") })
+                            ToggleRow(stringResource(R.string.parental_lock_settings), settings.lockSettings) { onUpdate { s -> s.copy(lockSettings = it) } }
+                            Text(stringResource(R.string.parental_locked_groups), color = colors.muted, fontSize = 12.sp)
+                            groups.forEach { group ->
+                                ToggleRow(group, group in settings.lockedGroups) { locked ->
+                                    onUpdate { s ->
+                                        s.copy(lockedGroups = if (locked) s.lockedGroups + group else s.lockedGroups - group)
+                                    }
+                                }
+                            }
                         }
                         SettingsSection.RECORDINGS -> {
                             FocusButton(label = stringResource(R.string.rec_pick_folder), onClick = { tree.launch(null) })
-                            CycleRow("Padding (min)", listOf(0, 1, 3, 5, 10), settings.recPaddingMin) { onUpdate { s -> s.copy(recPaddingMin = it) } }
-                            ToggleRow("Delete watched", settings.recDeleteWatched) { onUpdate { s -> s.copy(recDeleteWatched = it) } }
+                            CycleRow(stringResource(R.string.rec_padding), listOf(0, 1, 3, 5, 10), settings.recPaddingMin) { onUpdate { s -> s.copy(recPaddingMin = it) } }
+                            ToggleRow(stringResource(R.string.rec_delete_watched), settings.recDeleteWatched) { onUpdate { s -> s.copy(recDeleteWatched = it) } }
                             Text(stringResource(R.string.rec_quality_note), color = colors.muted, fontSize = 13.sp)
                         }
                         SettingsSection.GENERAL -> {
-                            CycleRow("Startup", StartupMode.entries.toList(), settings.startupMode) { onUpdate { s -> s.copy(startupMode = it) } }
+                            CycleRow(stringResource(R.string.startup_mode), StartupMode.entries.toList(), settings.startupMode) { onUpdate { s -> s.copy(startupMode = it) } }
                             FocusButton(label = stringResource(R.string.backup_export), onClick = { createDoc.launch("nova-backup.json") })
                             FocusButton(label = stringResource(R.string.backup_import), onClick = { openDoc.launch(arrayOf("application/json", "*/*")) })
+                            FocusButton(label = stringResource(R.string.clear_cache), onClick = onClearCaches)
                             FocusButton(label = stringResource(R.string.reset_settings), onClick = onReset)
                         }
                         SettingsSection.ABOUT -> {
@@ -295,7 +323,7 @@ fun SettingsScreen(
                             Spacer(Modifier.height(8.dp))
                             val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                             val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
-                            Text("RAM ${formatBytes(mi.totalMem)}  lowRam=${LowRam.isLowRam}", color = colors.muted, fontSize = 13.sp)
+                            Text(stringResource(R.string.about_memory_status, formatBytes(mi.totalMem), LowRam.isLowRam), color = colors.muted, fontSize = 13.sp)
                             Spacer(Modifier.height(12.dp))
                             FocusButton(label = stringResource(R.string.about_diagnostics), onClick = onDiagnostics)
                         }

@@ -22,6 +22,7 @@ class SettingsDpadTest {
                 SettingsScreen(
                     settings = AppSettings(firstRunDone = true),
                     playlists = listOf(Playlist(Playlist.DEMO_ID, "Showcase", PlaylistType.DEMO)),
+                    groups = emptyList(),
                     onUpdate = {},
                     onAdd = {},
                     onRefresh = {},
@@ -31,6 +32,7 @@ class SettingsDpadTest {
                     onExport = { _, _ -> },
                     onRestore = {},
                     onEpgNow = {},
+                    onClearCaches = {},
                     onDiagnostics = {},
                     onReset = {},
                 )

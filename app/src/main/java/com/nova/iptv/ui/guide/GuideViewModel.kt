@@ -8,6 +8,7 @@ import com.nova.iptv.data.local.SettingsRepository
 import com.nova.iptv.data.playlist.PlaylistRepository
 import com.nova.iptv.data.recordings.RecordingRepository
 import com.nova.iptv.data.recordings.ReminderWorker
+import com.nova.iptv.data.player.PlayerManager
 import com.nova.iptv.domain.model.AppSettings
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -40,6 +41,7 @@ class GuideViewModel @Inject constructor(
     private val epg: EpgRepository,
     val settingsRepo: SettingsRepository,
     private val recordings: RecordingRepository,
+    val playerManager: PlayerManager,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 

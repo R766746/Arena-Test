@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+
 package com.nova.iptv.ui.multiview
 
 import androidx.compose.foundation.background
@@ -74,10 +76,10 @@ fun MultiViewRoute(
     val colors = LocalNovaPalette.current
     var layout by remember { mutableIntStateOf(if (LowRam.isLowRam) 4 else 4) }
     var pickerFor by remember { mutableIntStateOf(-1) }
-    val channels = remember(favs, layout) {
+    var channels by remember(favs, layout) {
         val base = favs.take(layout).toMutableList()
         while (base.size < layout && favs.isNotEmpty()) base += favs[base.size % favs.size]
-        base
+        mutableStateOf(base.toList())
     }
     var warning by remember { mutableStateOf(false) }
     var players by remember { mutableStateOf(emptyList<androidx.media3.exoplayer.ExoPlayer>()) }
@@ -185,9 +187,11 @@ fun MultiViewRoute(
                     Text(stringResource(R.string.multiview_pick), color = colors.onBackground, fontSize = 18.sp)
                     favs.forEach { ch ->
                         FocusButton(label = ch.name, onClick = {
-                            // Swap this tile by rebuilding layout list: user picks favorite
+                            val tile = pickerFor
+                            if (tile in channels.indices) {
+                                channels = channels.toMutableList().also { it[tile] = ch }
+                            }
                             pickerFor = -1
-                            onFullscreen(PlayTarget.live(ch.id, ch.name, ch.number, ch.streamUrl))
                         }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
                     }
                     FocusButton(label = stringResource(R.string.action_cancel), onClick = { pickerFor = -1 })
