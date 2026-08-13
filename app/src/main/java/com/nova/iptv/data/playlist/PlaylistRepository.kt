@@ -70,18 +70,24 @@ class PlaylistRepositoryImpl @Inject constructor(
         db.playlists().observeAll().map { it.map { e -> e.toModel() } }
 
     override fun channels(playlistId: String): Flow<List<Channel>> =
-        db.channels().observeByPlaylist(playlistId).map { it.map { e -> e.toModel() } }
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
+        else db.channels().observeByPlaylist(playlistId).map { it.map { e -> e.toModel() } }
 
     override fun channelsByGroup(playlistId: String, group: String): Flow<List<Channel>> =
-        db.channels().observeByGroup(playlistId, group).map { it.map { e -> e.toModel() } }
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
+        else db.channels().observeByGroup(playlistId, group).map { it.map { e -> e.toModel() } }
 
     override fun favorites(playlistId: String): Flow<List<Channel>> =
-        db.channels().observeFavorites(playlistId).map { it.map { e -> e.toModel() } }
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
+        else db.channels().observeFavorites(playlistId).map { it.map { e -> e.toModel() } }
 
-    override fun groups(playlistId: String): Flow<List<String>> = db.channels().observeGroups(playlistId)
+    override fun groups(playlistId: String): Flow<List<String>> =
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
+        else db.channels().observeGroups(playlistId)
 
     override fun vod(playlistId: String, kind: String): Flow<List<VodItem>> =
-        db.vod().observe(playlistId, kind).map { it.map { e -> e.toModel() } }
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
+        else db.vod().observe(playlistId, kind).map { it.map { e -> e.toModel() } }
 
     override fun episodes(seriesId: String): Flow<List<Episode>> =
         db.episodes().observe(seriesId).map { it.map { e -> e.toModel() } }
@@ -90,9 +96,14 @@ class PlaylistRepositoryImpl @Inject constructor(
         db.history().observeRecent(limit).map { it.map { e -> e.toModel() } }
 
     override fun recentChannels(playlistId: String): Flow<List<Channel>> =
-        db.history().observeRecentChannels(playlistId).map { it.map { e -> e.toModel() } }
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
+        else db.history().observeRecentChannels(playlistId).map { it.map { e -> e.toModel() } }
 
     override fun searchAll(playlistId: String, query: String): Flow<List<SearchHit>> = flow {
+        if (playlistId.isBlank()) {
+            emit(emptyList())
+            return@flow
+        }
         val q = ftsQuery(query)
         if (q.isBlank()) {
             emit(emptyList())
@@ -128,7 +139,6 @@ class PlaylistRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deletePlaylist(id: String) {
-        if (id == Playlist.DEMO_ID) return
         db.channels().deleteByPlaylist(id)
         db.vod().deleteByPlaylist(id)
         db.playlists().delete(id)
@@ -231,6 +241,7 @@ class PlaylistRepositoryImpl @Inject constructor(
     }
 
     override suspend fun genres(playlistId: String, kind: String): List<String> {
+        if (playlistId.isBlank()) return emptyList()
         return db.vod().genreRows(playlistId, kind)
             .flatMap { it.split(',') }
             .map { it.trim() }

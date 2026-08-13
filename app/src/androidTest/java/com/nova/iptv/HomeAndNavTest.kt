@@ -53,9 +53,7 @@ class HomeAndNavTest {
                     onHide = {},
                     onAssignEpg = { _, _ -> },
                     onSearchEpg = { _, cb -> cb(emptyList()) },
-                    onShowcase = {},
                     onAddPlaylist = {},
-                    onDismissFirstRun = {},
                     playerManager = FakePlayerManager(),
                     verifyPin = { true },
                 )

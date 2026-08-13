@@ -30,7 +30,7 @@ class PlaylistUpdateWorker @AssistedInject constructor(
         setForeground(notification("Updating playlists"))
         val all = repo.playlists().first() // keep import-free
         val list = repo.playlists().first()
-        all.filter { it.autoUpdate && it.type != com.nova.iptv.domain.model.PlaylistType.DEMO }
+        all.filter { it.autoUpdate }
             .forEach { pl ->
                 runCatching { importer.refresh(pl) }
                     .onFailure { Timber.e(it, "playlist refresh failed %s", pl.id) }

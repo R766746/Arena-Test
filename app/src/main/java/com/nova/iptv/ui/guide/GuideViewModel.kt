@@ -70,7 +70,7 @@ class GuideViewModel @Inject constructor(
 
     private suspend fun reload() {
         val s = settingsRepo.settings.value
-        val pid = s.lastPlaylistId.ifBlank { com.nova.iptv.domain.model.Playlist.DEMO_ID }
+        val pid = s.lastPlaylistId
         val channels = playlists.snapshotChannels(pid).filter { !it.hidden }
         val from = windowStart.value
         val to = from + s.epgHours * 3600_000L

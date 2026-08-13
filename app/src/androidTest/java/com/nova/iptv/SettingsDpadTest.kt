@@ -21,7 +21,7 @@ class SettingsDpadTest {
             NovaTheme(AppSettings(firstRunDone = true)) {
                 SettingsScreen(
                     settings = AppSettings(firstRunDone = true),
-                    playlists = listOf(Playlist(Playlist.DEMO_ID, "Showcase", PlaylistType.DEMO)),
+                    playlists = listOf(Playlist("playlist-1", "My playlist", PlaylistType.M3U)),
                     groups = emptyList(),
                     onUpdate = {},
                     onAdd = {},

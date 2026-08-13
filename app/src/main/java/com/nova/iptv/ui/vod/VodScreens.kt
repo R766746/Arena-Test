@@ -69,11 +69,11 @@ class VodGridViewModel @Inject constructor(
     settings: SettingsRepository,
 ) : ViewModel() {
     val movies: StateFlow<List<VodItem>> = settings.settings.flatMapLatest {
-        repo.vod(it.lastPlaylistId.ifBlank { "demo" }, VodKind.MOVIE.name)
+        repo.vod(it.lastPlaylistId, VodKind.MOVIE.name)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(4_000), emptyList())
 
     val series: StateFlow<List<VodItem>> = settings.settings.flatMapLatest {
-        repo.vod(it.lastPlaylistId.ifBlank { "demo" }, VodKind.SERIES.name)
+        repo.vod(it.lastPlaylistId, VodKind.SERIES.name)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(4_000), emptyList())
 
     val clock24h = settings.settings

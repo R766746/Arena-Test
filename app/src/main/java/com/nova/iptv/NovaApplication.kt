@@ -14,7 +14,6 @@ import com.nova.iptv.core.perf.PlayerBudget
 import com.nova.iptv.data.epg.EpgRefreshWorker
 import com.nova.iptv.data.local.SettingsRepository
 import com.nova.iptv.data.player.PlayerManager
-import com.nova.iptv.data.playlist.DemoCatalog
 import com.nova.iptv.data.playlist.PlaylistRepository
 import com.nova.iptv.data.playlist.PlaylistUpdateWorker
 import dagger.hilt.android.HiltAndroidApp
@@ -35,7 +34,6 @@ class NovaApplication : Application(), Configuration.Provider, ImageLoaderFactor
     @Inject lateinit var playerManager: PlayerManager
     @Inject lateinit var settings: SettingsRepository
     @Inject lateinit var playlists: PlaylistRepository
-    @Inject lateinit var demoCatalog: DemoCatalog
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -55,8 +53,12 @@ class NovaApplication : Application(), Configuration.Provider, ImageLoaderFactor
             installStrictMode()
         }
         appScope.launch {
-            runCatching { demoCatalog.ensureSeeded() }
+            // Remove the legacy showcase catalog from existing installations.
+            runCatching { playlists.deletePlaylist("demo") }
             val s = settings.settings.first()
+            if (s.lastPlaylistId == "demo") {
+                settings.update { it.copy(lastPlaylistId = "", lastChannelId = "", firstRunDone = false) }
+            }
             PlaylistUpdateWorker.schedule(this@NovaApplication, s.updateOnStart)
             if (s.updateEpgOnStart) {
                 EpgRefreshWorker.enqueueNow(this@NovaApplication)

@@ -45,9 +45,6 @@ class EpgRefreshWorker @AssistedInject constructor(
                     epg.ingestUrl(pl.id, src.url, src.timeShiftHours, src.name)
                 }
             }
-            if (pl.id == Playlist.DEMO_ID) {
-                epg.ingestDemo(pl.id)
-            }
         }
         epg.prune(s.epgPastDays)
         return Result.success()

@@ -71,6 +71,7 @@ import com.nova.iptv.nav.glowBorderOnFocus
 import com.nova.iptv.nav.rememberFocusRestorer
 import com.nova.iptv.nav.scaleOnFocus
 import com.nova.iptv.ui.components.CategoryIcon
+import com.nova.iptv.ui.components.CenteredProgressIndicator
 import com.nova.iptv.ui.components.ChannelRow
 import com.nova.iptv.ui.components.EmptyState
 import com.nova.iptv.ui.components.FocusButton
@@ -126,12 +127,7 @@ fun HomeRoute(
         onHide = vm::hideChannel,
         onAssignEpg = vm::assignEpg,
         onSearchEpg = vm::searchEpgNames,
-        onShowcase = {
-            vm.installShowcase()
-            onNavigate(Routes.Home)
-        },
         onAddPlaylist = { onNavigate(Routes.AddPlaylist) },
-        onDismissFirstRun = vm::dismissFirstRun,
         playerManager = bridge.playerManager,
         verifyPin = { pin -> bridge.settings.verifyPin(pin) },
     )
@@ -149,9 +145,7 @@ fun HomeScreen(
     onHide: (String) -> Unit,
     onAssignEpg: (String, String) -> Unit,
     onSearchEpg: (String, (List<Pair<String, String>>) -> Unit) -> Unit,
-    onShowcase: () -> Unit,
     onAddPlaylist: () -> Unit,
-    onDismissFirstRun: () -> Unit,
     playerManager: PlayerManager,
     verifyPin: (String) -> Boolean,
 ) {
@@ -201,6 +195,7 @@ fun HomeScreen(
                     groups = state.groups,
                     selected = state.groupId,
                     onSelect = onGroup,
+                    isLoading = state.isLoading,
                     modifier = Modifier
                         .width(PaneGroups)
                         .fillMaxHeight()
@@ -217,24 +212,28 @@ fun HomeScreen(
                         .focusRequester(contentFocus)
                         .focusProperties { left = groupFocus },
                 ) {
-                    when (state.category) {
-                        HomeCategory.MOVIES, HomeCategory.SERIES -> VodPane(
-                            items = state.vod,
-                            history = state.history,
-                            onClick = onVod,
-                            onFocus = { onChannelFocus(it) },
-                        )
-                        else -> ChannelPane(
-                            channels = state.channels,
-                            state = state,
-                            onWatch = { ch ->
-                                val locked = state.settings.parentalEnabled &&
-                                    (ch.locked || ch.groupName in state.settings.lockedGroups)
-                                if (locked) pinFor = ch else onWatch(ch)
-                            },
-                            onLongPress = { actionsFor = it },
-                            onFocus = onChannelFocus,
-                        )
+                    if (state.isLoading && state.groups.isEmpty()) {
+                        CenteredProgressIndicator()
+                    } else {
+                        when (state.category) {
+                            HomeCategory.MOVIES, HomeCategory.SERIES -> VodPane(
+                                items = state.vod,
+                                history = state.history,
+                                onClick = onVod,
+                                onFocus = { onChannelFocus(it) },
+                            )
+                            else -> ChannelPane(
+                                channels = state.channels,
+                                state = state,
+                                onWatch = { ch ->
+                                    val locked = state.settings.parentalEnabled &&
+                                        (ch.locked || ch.groupName in state.settings.lockedGroups)
+                                    if (locked) pinFor = ch else onWatch(ch)
+                                },
+                                onLongPress = { actionsFor = it },
+                                onFocus = onChannelFocus,
+                            )
+                        }
                     }
                 }
                 if (showPreview) {
@@ -247,8 +246,8 @@ fun HomeScreen(
             }
         }
 
-        if (!state.settings.firstRunDone) {
-            FirstRunCard(onShowcase = onShowcase, onAdd = onAddPlaylist, onSkip = onDismissFirstRun)
+        if (state.firstRun) {
+            FirstRunCard(onAdd = onAddPlaylist)
         }
 
         actionsFor?.let { ch ->
@@ -333,10 +332,11 @@ private fun GroupPane(
     groups: List<GroupItem>,
     selected: String,
     onSelect: (String) -> Unit,
+    isLoading: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalNovaPalette.current
-    if (groups.isEmpty()) {
+    if (groups.isEmpty() && !isLoading) {
         EmptyState(stringResource(R.string.empty_channels), stringResource(R.string.empty_channels_hint), modifier)
         return
     }
@@ -487,7 +487,7 @@ private fun PreviewPane(channel: Channel?, playerManager: PlayerManager, modifie
 }
 
 @Composable
-private fun FirstRunCard(onShowcase: () -> Unit, onAdd: () -> Unit, onSkip: () -> Unit) {
+private fun FirstRunCard(onAdd: () -> Unit) {
     val colors = LocalNovaPalette.current
     Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)), contentAlignment = Alignment.Center) {
         GlassPanel(Modifier.width(520.dp)) {
@@ -498,13 +498,7 @@ private fun FirstRunCard(onShowcase: () -> Unit, onAdd: () -> Unit, onSkip: () -
                 Spacer(Modifier.height(8.dp))
                 Text(stringResource(R.string.first_run_legal), color = colors.muted, fontSize = 12.sp)
                 Spacer(Modifier.height(20.dp))
-                Row {
-                    FocusButton(stringResource(R.string.first_run_showcase), onShowcase)
-                    Spacer(Modifier.width(12.dp))
-                    FocusButton(stringResource(R.string.first_run_add), onAdd)
-                    Spacer(Modifier.width(12.dp))
-                    FocusButton(stringResource(R.string.action_cancel), onSkip)
-                }
+                FocusButton(stringResource(R.string.first_run_add), onAdd)
             }
         }
     }

@@ -108,10 +108,18 @@ interface ChannelDao {
     @Query("DELETE FROM channels WHERE playlistId = :playlistId AND id NOT IN (:keptIds)")
     suspend fun deleteOrphans(playlistId: String, keptIds: List<String>)
 
+    @Query("DELETE FROM channels WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
+
+    @Query("SELECT id FROM channels WHERE playlistId = :playlistId")
+    suspend fun idsByPlaylist(playlistId: String): List<String>
+
     @Transaction
     suspend fun replacePlaylistChannels(playlistId: String, items: List<ChannelEntity>) {
-        upsertAll(items)
-        deleteOrphans(playlistId, items.map { it.id })
+        val keep = items.mapTo(HashSet(items.size)) { it.id }
+        val obsolete = idsByPlaylist(playlistId).filterNot { it in keep }
+        items.chunked(SQL_BATCH_SIZE).forEach { upsertAll(it) }
+        obsolete.chunked(SQL_BATCH_SIZE).forEach { deleteByIds(it) }
     }
 }
 
@@ -223,10 +231,16 @@ interface VodDao {
     @Query("DELETE FROM vod WHERE playlistId = :playlistId AND id NOT IN (:keptIds)")
     suspend fun deleteOrphans(playlistId: String, keptIds: List<String>)
 
+    @Query("DELETE FROM vod WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
+
     @Transaction
     suspend fun syncVod(playlistId: String, items: List<VodEntity>) {
-        upsertAll(items)
-        deleteOrphans(playlistId, items.map { it.id })
+        val keep = items.mapTo(HashSet(items.size)) { it.id }
+        val existing = byKind(playlistId, "MOVIE") + byKind(playlistId, "SERIES")
+        val obsolete = existing.map { it.id }.filterNot { it in keep }
+        items.chunked(SQL_BATCH_SIZE).forEach { upsertAll(it) }
+        obsolete.chunked(SQL_BATCH_SIZE).forEach { deleteByIds(it) }
     }
 
     @Query("SELECT DISTINCT genresCsv FROM vod WHERE playlistId = :playlistId AND kind = :kind")
@@ -353,3 +367,5 @@ interface DiagnosticsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: DiagnosticsEntity)
 }
+
+private const val SQL_BATCH_SIZE = 500

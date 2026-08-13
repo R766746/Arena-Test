@@ -94,9 +94,7 @@ class BackupManager @Inject constructor(
             )
             playlists.upsertPlaylist(pl)
             if (!bp.password.isNullOrBlank()) vault.putPassword(bp.id, bp.password)
-            if (pl.type != com.nova.iptv.domain.model.PlaylistType.DEMO) {
-                importer.refresh(pl).getOrThrow()
-            }
+            importer.refresh(pl).getOrThrow()
         }
         payload.favorites.forEach { id ->
             val channel = playlists.getChannel(id)

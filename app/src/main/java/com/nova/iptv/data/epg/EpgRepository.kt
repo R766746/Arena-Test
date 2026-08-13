@@ -28,7 +28,6 @@ interface EpgRepository {
     suspend fun programsFor(channelId: String, fromMs: Long, toMs: Long): List<Program>
     suspend fun searchTitles(query: String, fromMs: Long, toMs: Long): List<Program>
     suspend fun ingestUrl(playlistId: String, url: String, timeShiftHours: Int, sourceName: String = ""): Result<Int>
-    suspend fun ingestDemo(playlistId: String): Int
     suspend fun ingestPrograms(programs: List<Program>): Int
     suspend fun autoMatch(playlistId: String): Int
     suspend fun assignEpg(channelId: String, xmltvId: String)
@@ -48,7 +47,6 @@ class EpgRepositoryImpl @Inject constructor(
     private val client: OkHttpClient,
     private val matcher: EpgMatcher,
     private val settings: SettingsRepository,
-    private val demoEpg: DemoEpg,
 ) : EpgRepository {
 
     override suspend fun nowAndNext(channelId: String, nowMs: Long): NowNext {
@@ -73,9 +71,6 @@ class EpgRepositoryImpl @Inject constructor(
     ): Result<Int> = withContext(Dispatchers.IO) {
         val started = System.currentTimeMillis()
         runCatching {
-            if (url.startsWith("demo://")) {
-                return@runCatching ingestDemo(playlistId)
-            }
             val req = Request.Builder().url(url).header("User-Agent", Playlist.DEFAULT_UA).build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) error("EPG HTTP ${resp.code}")
@@ -149,15 +144,6 @@ class EpgRepositoryImpl @Inject constructor(
         }.onFailure { Timber.e(it, "EPG ingest failed for %s", url) }
     }
 
-    override suspend fun ingestDemo(playlistId: String): Int {
-        val channels = db.channels().byPlaylist(playlistId).map { it.toModel() }
-        val programs = demoEpg.generate(channels)
-        programs.chunked(500).forEach { chunk ->
-            db.programs().upsertAll(chunk.map { ProgramEntity.from(it) })
-        }
-        return programs.size
-    }
-
     override suspend fun ingestPrograms(programs: List<Program>): Int = withContext(Dispatchers.IO) {
         programs.chunked(500).forEach { chunk ->
             db.programs().upsertAll(chunk.map { ProgramEntity.from(it) })
@@ -226,12 +212,6 @@ class EpgRepositoryImpl @Inject constructor(
 class FakeEpgRepository : EpgRepository {
     private val programs = MutableStateFlow<List<Program>>(emptyList())
     private val src = MutableStateFlow<List<EpgSource>>(emptyList())
-    private val demo = DemoEpg()
-
-    fun seed(channels: List<com.nova.iptv.domain.model.Channel>) {
-        programs.value = demo.generate(channels)
-    }
-
     override suspend fun nowAndNext(channelId: String, nowMs: Long): NowNext {
         val list = programs.value.filter { it.channelId == channelId }.sortedBy { it.startMs }
         return NowNext(list.firstOrNull { it.isNow(nowMs) }, list.firstOrNull { it.startMs > nowMs })
@@ -246,7 +226,6 @@ class FakeEpgRepository : EpgRepository {
     override suspend fun ingestUrl(playlistId: String, url: String, timeShiftHours: Int, sourceName: String) =
         Result.success(programs.value.size)
 
-    override suspend fun ingestDemo(playlistId: String) = programs.value.size
     override suspend fun ingestPrograms(programs: List<Program>): Int {
         this.programs.value = (this.programs.value + programs).distinctBy { it.id }
         return programs.size

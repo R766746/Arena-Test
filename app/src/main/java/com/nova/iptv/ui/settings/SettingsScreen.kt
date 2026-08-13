@@ -99,7 +99,7 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
     val playlistsFlow = playlists.playlists().stateIn(viewModelScope, SharingStarted.WhileSubscribed(4_000), emptyList())
     val groups = settings.settings.flatMapLatest {
-        playlists.groups(it.lastPlaylistId.ifBlank { Playlist.DEMO_ID })
+        playlists.groups(it.lastPlaylistId)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(4_000), emptyList())
 
     fun update(t: (AppSettings) -> AppSettings) = viewModelScope.launch { settings.update(t) }
@@ -366,9 +366,7 @@ private fun PlaylistsPane(
             }
             FocusButton(label = stringResource(R.string.playlists_update_now), onClick = { onRefresh(pl) })
             Spacer(Modifier.width(8.dp))
-            if (pl.type != PlaylistType.DEMO) {
-                FocusButton(label = stringResource(R.string.playlists_delete), onClick = { onDelete(pl.id) })
-            }
+            FocusButton(label = stringResource(R.string.playlists_delete), onClick = { onDelete(pl.id) })
         }
     }
 }

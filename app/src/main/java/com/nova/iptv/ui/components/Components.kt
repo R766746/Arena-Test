@@ -32,6 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -42,6 +45,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
@@ -386,6 +399,40 @@ fun PinDialog(
 }
 
 @Composable
+fun CenteredProgressIndicator(modifier: Modifier = Modifier) {
+    val colors = LocalNovaPalette.current
+    val transition = rememberInfiniteTransition(label = "loading")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.size(48.dp)) {
+            drawArc(
+                color = colors.accent.copy(alpha = 0.2f),
+                startAngle = 0f,
+                sweepAngle = 360f,
+                useCenter = false,
+                style = Stroke(width = 4.dp.toPx())
+            )
+            drawArc(
+                color = colors.accent,
+                startAngle = rotation,
+                sweepAngle = 90f,
+                useCenter = false,
+                style = Stroke(width = 4.dp.toPx())
+            )
+        }
+    }
+}
+
+@Composable
 fun FocusButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalNovaPalette.current
     Box(
@@ -404,16 +451,32 @@ fun FocusButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifie
 @Composable
 fun ExitConfirm(onExit: () -> Unit, onStay: () -> Unit) {
     val colors = LocalNovaPalette.current
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(0.5f)), contentAlignment = Alignment.Center) {
-        GlassPanel(Modifier.width(420.dp)) {
-            Column(Modifier.padding(28.dp)) {
-                Text(stringResource(R.string.exit_title), color = colors.onBackground, fontSize = 22.sp)
-                Spacer(Modifier.height(8.dp))
-                Text(stringResource(R.string.exit_body), color = colors.muted, fontSize = 14.sp)
-                Spacer(Modifier.height(20.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FocusButton(stringResource(R.string.exit_stay), onStay)
-                    FocusButton(stringResource(R.string.exit_confirm), onExit)
+    val stayFocus = remember { FocusRequester() }
+    val exitFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { stayFocus.requestFocus() }
+    Dialog(
+        onDismissRequest = onStay,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.5f)), contentAlignment = Alignment.Center) {
+            GlassPanel(Modifier.width(420.dp)) {
+                Column(Modifier.padding(28.dp)) {
+                    Text(stringResource(R.string.exit_title), color = colors.onBackground, fontSize = 22.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.exit_body), color = colors.muted, fontSize = 14.sp)
+                    Spacer(Modifier.height(20.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FocusButton(
+                            stringResource(R.string.exit_stay),
+                            onStay,
+                            Modifier.focusRequester(stayFocus).focusProperties { right = exitFocus },
+                        )
+                        FocusButton(
+                            stringResource(R.string.exit_confirm),
+                            onExit,
+                            Modifier.focusRequester(exitFocus).focusProperties { left = stayFocus },
+                        )
+                    }
                 }
             }
         }

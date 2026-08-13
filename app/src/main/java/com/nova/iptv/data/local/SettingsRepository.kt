@@ -141,7 +141,7 @@ class SettingsRepository @Inject constructor(
             externalPlayerPackage = getOr(Keys.externalPlayer, ""),
             startupMode = enumValueOfOr(this[Keys.startup], StartupMode.HOME),
             lastChannelId = getOr(Keys.lastChannel, ""),
-            lastPlaylistId = getOr(Keys.lastPlaylist, "demo"),
+            lastPlaylistId = getOr(Keys.lastPlaylist, ""),
             lastCategory = enumValueOfOr(this[Keys.lastCategory], HomeCategory.LIVE),
             lastGroup = getOr(Keys.lastGroup, ""),
             parentalEnabled = getOr(Keys.parental, false),

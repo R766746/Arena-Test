@@ -30,6 +30,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.nova.iptv.data.local.SettingsRepository
 import com.nova.iptv.data.player.PlayerManager
+import com.nova.iptv.data.playlist.PlaylistRepository
 import com.nova.iptv.domain.model.StartupMode
 import com.nova.iptv.ui.components.ExitConfirm
 import com.nova.iptv.ui.guide.GuideRoute
@@ -56,11 +57,13 @@ import androidx.lifecycle.ViewModel
 class RootViewModel @Inject constructor(
     val settings: SettingsRepository,
     val playerManager: PlayerManager,
+    val playlists: PlaylistRepository,
 ) : ViewModel()
 
 @Composable
 fun NovaNav(vm: RootViewModel = hiltViewModel()) {
     val settings by vm.settings.settings.collectAsStateWithLifecycle()
+    val playlists by vm.playlists.playlists().collectAsStateWithLifecycle(emptyList())
     NovaTheme(settings) {
         val nav = rememberNavController()
         val ctx = LocalContext.current
@@ -119,7 +122,7 @@ fun NovaNav(vm: RootViewModel = hiltViewModel()) {
                     SplashScreen()
                     LaunchedEffect(settings) {
                         delay(1600)
-                        if (!settings.firstRunDone) {
+                        if (playlists.isEmpty()) {
                             nav.navigate(Routes.AddPlaylist) {
                                 popUpTo(Routes.Splash) { inclusive = true }
                             }

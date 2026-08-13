@@ -18,12 +18,16 @@ import com.nova.iptv.domain.model.VodItem
 import com.nova.iptv.domain.model.VodKind
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.buffer
@@ -43,6 +47,8 @@ class PlaylistImporter @Inject constructor(
     private val epg: EpgRepository,
     private val settings: SettingsRepository,
 ) {
+    private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     suspend fun importRemoteM3u(
         name: String,
         url: String,
@@ -126,10 +132,18 @@ class PlaylistImporter @Inject constructor(
         existingId: String? = null,
         onProgress: (ImportProgress) -> Unit,
     ): Result<Playlist> = withContext(Dispatchers.IO) {
-        val id = existingId ?: newId()
+        val normalizedPortal = portal.trim().trimEnd('/')
+        val matching = if (existingId == null) {
+            repo.playlists().first().filter {
+                it.type == PlaylistType.XTREAM &&
+                    it.url.trim().trimEnd('/').equals(normalizedPortal, ignoreCase = true) &&
+                    it.username == username
+            }
+        } else emptyList()
+        val id = existingId ?: matching.firstOrNull()?.id ?: newId()
         runCatching {
             onProgress(ImportProgress(ImportProgress.Stage.CONNECTING))
-            val base = portal.trim().trimEnd('/')
+            val base = normalizedPortal
             val api = "$base/player_api.php"
             val auth = xtreamApi.authenticate(api, username, password)
             val status = auth.userInfo?.status.orEmpty()
@@ -138,25 +152,46 @@ class PlaylistImporter @Inject constructor(
                 error("invalid credentials")
             }
             onProgress(ImportProgress(ImportProgress.Stage.DOWNLOADING, message = "live"))
-            val liveCats = runCatching { xtreamApi.liveCategories(api, username, password) }.getOrDefault(emptyList())
-            val vodCats = runCatching { xtreamApi.vodCategories(api, username, password) }.getOrDefault(emptyList())
-            val seriesCats = runCatching { xtreamApi.seriesCategories(api, username, password) }.getOrDefault(emptyList())
+            val (categoryResults, streamResults) = coroutineScope {
+                val liveCats = async { runCatching { xtreamApi.liveCategories(api, username, password) } }
+                val vodCats = async { runCatching { xtreamApi.vodCategories(api, username, password) } }
+                val seriesCats = async { runCatching { xtreamApi.seriesCategories(api, username, password) } }
+                val live = async { runCatching { xtreamApi.liveStreams(api, username, password) } }
+                val vod = async { runCatching { xtreamApi.vodStreams(api, username, password) } }
+                val series = async { runCatching { xtreamApi.series(api, username, password) } }
+                Triple(liveCats.await(), vodCats.await(), seriesCats.await()) to
+                    Triple(live.await(), vod.await(), series.await())
+            }
+            val liveCats = categoryResults.first.getOrDefault(emptyList())
+            val vodCats = categoryResults.second.getOrDefault(emptyList())
+            val seriesCats = categoryResults.third.getOrDefault(emptyList())
             val liveMap = liveCats.associate { it.categoryId.orEmpty() to it.categoryName.orEmpty() }
             val vodMap = vodCats.associate { it.categoryId.orEmpty() to it.categoryName.orEmpty() }
             val serMap = seriesCats.associate { it.categoryId.orEmpty() to it.categoryName.orEmpty() }
 
-            val live = runCatching { xtreamApi.liveStreams(api, username, password) }.getOrElse {
+            val live = streamResults.first.getOrElse {
                 Timber.w(it, "live streams failed, trying m3u_plus fallback")
                 return@runCatching importM3uPlus(id, name, base, username, password, onProgress)
             }
             onProgress(ImportProgress(ImportProgress.Stage.PARSING, parsed = live.size))
-            val vods = runCatching { xtreamApi.vodStreams(api, username, password) }.getOrDefault(emptyList())
-            val series = runCatching { xtreamApi.series(api, username, password) }.getOrDefault(emptyList())
+            val vods = streamResults.second.getOrDefault(emptyList())
+            val series = streamResults.third.getOrDefault(emptyList())
 
-            val proto = auth.serverInfo?.server_protocol ?: "http"
-            val host = auth.serverInfo?.url ?: base.removePrefix("http://").removePrefix("https://").substringBefore('/')
+            val proto = auth.serverInfo?.server_protocol?.takeIf { it.isNotBlank() }
+                ?: Uri.parse(base).scheme.orEmpty().ifBlank { "http" }
+            val serverUrl = auth.serverInfo?.url.orEmpty().trim().trimEnd('/')
             val port = auth.serverInfo?.port ?: ""
-            val root = if (port.isBlank()) base else "$proto://$host:$port"
+            val serverUri = Uri.parse(
+                if (serverUrl.startsWith("http://", true) || serverUrl.startsWith("https://", true)) serverUrl
+                else "$proto://$serverUrl",
+            )
+            val host = serverUri.host.orEmpty().ifBlank { Uri.parse(base).host.orEmpty() }
+            val root = when {
+                host.isBlank() -> base
+                port.isNotBlank() -> "$proto://$host:$port"
+                serverUrl.isNotBlank() -> "$proto://$host"
+                else -> base
+            }
 
             val channels = live.mapIndexed { idx, s ->
                 val sid = s.streamId?.toString().orEmpty()
@@ -229,8 +264,12 @@ class PlaylistImporter @Inject constructor(
                 onProgress,
                 password,
             ).also {
+                matching.drop(1).forEach { duplicate -> repo.deletePlaylist(duplicate.id) }
                 if (settings.settings.value.updateEpgOnPlaylistChange) {
-                    ingestXtreamEpg(api, username, password, channels)
+                    backgroundScope.launch {
+                        runCatching { ingestXtreamEpg(api, username, password, channels) }
+                            .onFailure { Timber.w(it, "Xtream EPG background ingest failed") }
+                    }
                 }
             }
         }.recoverCatching { mapError(it) }
@@ -264,7 +303,6 @@ class PlaylistImporter @Inject constructor(
 
     suspend fun refresh(playlist: Playlist, onProgress: (ImportProgress) -> Unit = {}): Result<Playlist> {
         return when (playlist.type) {
-            PlaylistType.DEMO -> Result.success(playlist)
             PlaylistType.M3U -> importRemoteM3u(
                 playlist.name, playlist.url, playlist.epgUrl, playlist.userAgent,
                 existingId = playlist.id, onProgress = onProgress,

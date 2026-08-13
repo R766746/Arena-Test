@@ -31,7 +31,7 @@ data class AppSettings(
     val externalPlayerPackage: String = "",
     val startupMode: StartupMode = StartupMode.HOME,
     val lastChannelId: String = "",
-    val lastPlaylistId: String = Playlist.DEMO_ID,
+    val lastPlaylistId: String = "",
     val lastCategory: HomeCategory = HomeCategory.LIVE,
     val lastGroup: String = "",
     val parentalEnabled: Boolean = false,

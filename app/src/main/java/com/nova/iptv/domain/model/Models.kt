@@ -3,7 +3,7 @@ package com.nova.iptv.domain.model
 /**
  * Domain models for NovaIptv. These are UI/use-case facing copies of Room rows.
  */
-enum class PlaylistType { DEMO, M3U, XTREAM, FILE }
+enum class PlaylistType { M3U, XTREAM, FILE }
 
 enum class VodKind { MOVIE, SERIES }
 
@@ -43,7 +43,6 @@ data class Playlist(
     val portal: String = "",
 ) {
     companion object {
-        const val DEMO_ID = "demo"
         const val DEFAULT_UA =
             "Mozilla/5.0 (Linux; Android 12; SHIELD Android TV) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
     }

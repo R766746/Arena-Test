@@ -60,7 +60,7 @@ class MultiViewViewModel @Inject constructor(
     settings: SettingsRepository,
 ) : ViewModel() {
     val favorites = settings.settings.flatMapLatest {
-        playlists.favorites(it.lastPlaylistId.ifBlank { "demo" })
+        playlists.favorites(it.lastPlaylistId)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(4_000), emptyList())
     val clock24h = settings.settings
 }

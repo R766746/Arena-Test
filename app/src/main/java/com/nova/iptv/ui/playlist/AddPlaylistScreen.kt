@@ -4,26 +4,33 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -35,7 +42,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.tv.material3.Text
 import com.nova.iptv.R
 import com.nova.iptv.data.local.SettingsRepository
-import com.nova.iptv.data.playlist.DemoCatalog
 import com.nova.iptv.data.playlist.ImportException
 import com.nova.iptv.data.playlist.PlaylistImporter
 import com.nova.iptv.domain.model.ImportProgress
@@ -44,7 +50,6 @@ import com.nova.iptv.nav.glowBorderOnFocus
 import com.nova.iptv.nav.scaleOnFocus
 import com.nova.iptv.ui.components.FocusButton
 import com.nova.iptv.ui.components.GlassPanel
-import com.nova.iptv.ui.components.NovaTopBar
 import com.nova.iptv.ui.theme.LocalNovaPalette
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
@@ -55,7 +60,6 @@ enum class AddMode { PICK, M3U, XTREAM, FILE }
 @HiltViewModel
 class AddPlaylistViewModel @Inject constructor(
     private val importer: PlaylistImporter,
-    private val demo: DemoCatalog,
     private val settings: SettingsRepository,
 ) : ViewModel() {
     var progress by mutableStateOf<ImportProgress?>(null)
@@ -97,14 +101,6 @@ class AddPlaylistViewModel @Inject constructor(
         }
     }
 
-    fun showcase(onDone: () -> Unit) {
-        viewModelScope.launch {
-            demo.seed()
-            settings.update { it.copy(firstRunDone = true) }
-            onDone()
-        }
-    }
-
     private fun map(t: Throwable): String {
         val msg = (t as? ImportException)?.message ?: t.message.orEmpty()
         return when {
@@ -124,67 +120,97 @@ fun AddPlaylistRoute(
     vm: AddPlaylistViewModel = hiltViewModel(),
 ) {
     val colors = LocalNovaPalette.current
-    var mode by remember { mutableStateOf(AddMode.PICK) }
+    var mode by rememberSaveable { mutableStateOf(AddMode.PICK) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let { vm.importFile("File playlist", it.toString(), onDone) }
     }
 
-    Column(Modifier.fillMaxSize().background(colors.background)) {
-        NovaTopBar(true)
-        Text(stringResource(R.string.add_playlist), color = colors.onBackground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(28.dp, 8.dp))
-        when (mode) {
-            AddMode.PICK -> {
-                Row(Modifier.padding(28.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    ModeTile(stringResource(R.string.add_m3u_url)) { mode = AddMode.M3U }
-                    ModeTile(stringResource(R.string.add_xtream)) { mode = AddMode.XTREAM }
-                    ModeTile(stringResource(R.string.add_file)) {
-                        filePicker.launch(arrayOf("audio/x-mpegurl", "application/vnd.apple.mpegurl", "text/plain", "*/*"))
+    Box(
+        Modifier.fillMaxSize().background(
+            Brush.linearGradient(listOf(colors.background, colors.surface2, colors.background)),
+        ),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .widthIn(max = 960.dp)
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("NOVA IPTV", color = colors.accent, fontSize = 38.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.welcome_subtitle), color = colors.muted, fontSize = 16.sp, modifier = Modifier.padding(top = 6.dp, bottom = 24.dp))
+            GlassPanel(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                    Text(stringResource(R.string.add_playlist), color = colors.onBackground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.welcome_body), color = colors.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp, bottom = 20.dp))
+                    when (mode) {
+                        AddMode.PICK -> BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val compact = maxWidth < 680.dp
+                            if (compact) {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    ModeTile(stringResource(R.string.add_m3u_url), Modifier.fillMaxWidth()) { mode = AddMode.M3U }
+                                    ModeTile(stringResource(R.string.add_xtream), Modifier.fillMaxWidth()) { mode = AddMode.XTREAM }
+                                    ModeTile(stringResource(R.string.add_file), Modifier.fillMaxWidth()) {
+                                        filePicker.launch(arrayOf("audio/x-mpegurl", "application/vnd.apple.mpegurl", "text/plain", "*/*"))
+                                    }
+                                }
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    ModeTile(stringResource(R.string.add_m3u_url), Modifier.weight(1f)) { mode = AddMode.M3U }
+                                    ModeTile(stringResource(R.string.add_xtream), Modifier.weight(1f)) { mode = AddMode.XTREAM }
+                                    ModeTile(stringResource(R.string.add_file), Modifier.weight(1f)) {
+                                        filePicker.launch(arrayOf("audio/x-mpegurl", "application/vnd.apple.mpegurl", "text/plain", "*/*"))
+                                    }
+                                }
+                            }
+                        }
+                        AddMode.M3U -> M3uForm(vm, onDone) { mode = AddMode.PICK }
+                        AddMode.XTREAM -> XtreamForm(vm, onDone) { mode = AddMode.PICK }
+                        AddMode.FILE -> Unit
+                    }
+                    vm.progress?.let { p ->
+                Text(
+                    when (p.stage) {
+                        ImportProgress.Stage.CONNECTING -> stringResource(R.string.progress_connecting)
+                        ImportProgress.Stage.DOWNLOADING -> stringResource(R.string.progress_downloading, p.downloadedKb)
+                        ImportProgress.Stage.PARSING -> stringResource(R.string.progress_parsing, p.parsed, p.total)
+                        ImportProgress.Stage.SAVING -> stringResource(R.string.progress_saving)
+                        else -> p.stage.name
+                    },
+                    color = colors.muted,
+                    modifier = Modifier.padding(top = 18.dp),
+                )
+            }
+            vm.error?.let { err ->
+                val mapped = when (err) {
+                    "unknown_host" -> stringResource(R.string.error_unknown_host)
+                    "401" -> stringResource(R.string.error_unauthorized)
+                    "empty" -> stringResource(R.string.error_empty_playlist)
+                    "ssl" -> stringResource(R.string.error_ssl)
+                    else -> stringResource(R.string.error_generic, err)
+                }
+                Text(mapped, color = colors.danger, modifier = Modifier.padding(top = 18.dp))
+            }
+                    Text(stringResource(R.string.first_run_legal), color = colors.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 20.dp))
+                    if (mode == AddMode.PICK) {
+                        FocusButton(label = stringResource(R.string.action_cancel), onClick = onBack, modifier = Modifier.padding(top = 16.dp))
                     }
                 }
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.padding(horizontal = 28.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FocusButton(label = stringResource(R.string.first_run_showcase), onClick = { vm.showcase(onDone) })
-                    FocusButton(label = stringResource(R.string.action_cancel), onClick = onBack)
-                }
-                Text(stringResource(R.string.first_run_legal), color = colors.muted, fontSize = 12.sp, modifier = Modifier.padding(28.dp))
             }
-            AddMode.M3U -> M3uForm(vm, onDone) { mode = AddMode.PICK }
-            AddMode.XTREAM -> XtreamForm(vm, onDone) { mode = AddMode.PICK }
-            AddMode.FILE -> Unit
-        }
-        vm.progress?.let { p ->
-            Text(
-                when (p.stage) {
-                    ImportProgress.Stage.CONNECTING -> stringResource(R.string.progress_connecting)
-                    ImportProgress.Stage.DOWNLOADING -> stringResource(R.string.progress_downloading, p.downloadedKb)
-                    ImportProgress.Stage.PARSING -> stringResource(R.string.progress_parsing, p.parsed, p.total)
-                    ImportProgress.Stage.SAVING -> stringResource(R.string.progress_saving)
-                    else -> p.stage.name
-                },
-                color = colors.muted,
-                modifier = Modifier.padding(28.dp),
-            )
-        }
-        vm.error?.let { err ->
-            val mapped = when (err) {
-                "unknown_host" -> stringResource(R.string.error_unknown_host)
-                "401" -> stringResource(R.string.error_unauthorized)
-                "empty" -> stringResource(R.string.error_empty_playlist)
-                "ssl" -> stringResource(R.string.error_ssl)
-                else -> stringResource(R.string.error_generic, err)
-            }
-            Text(mapped, color = colors.danger, modifier = Modifier.padding(28.dp))
         }
     }
 }
 
 @Composable
-private fun ModeTile(label: String, onClick: () -> Unit) {
+private fun ModeTile(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LocalNovaPalette.current
     GlassPanel(
-        Modifier
-            .width(220.dp)
-            .height(140.dp)
+        modifier
+            .height(112.dp)
             .scaleOnFocus(1.04f)
             .glowBorderOnFocus(radius = 12.dp)
             .dpadClickable(onClick = onClick),
@@ -197,10 +223,10 @@ private fun ModeTile(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun M3uForm(vm: AddPlaylistViewModel, onDone: () -> Unit, onBack: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var url by remember { mutableStateOf("") }
-    var epg by remember { mutableStateOf("") }
-    var ua by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var url by rememberSaveable { mutableStateOf("") }
+    var epg by rememberSaveable { mutableStateOf("") }
+    var ua by rememberSaveable { mutableStateOf("") }
     Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Field(stringResource(R.string.field_name), name) { name = it }
         Field(stringResource(R.string.field_url), url) { url = it }
@@ -215,10 +241,10 @@ private fun M3uForm(vm: AddPlaylistViewModel, onDone: () -> Unit, onBack: () -> 
 
 @Composable
 private fun XtreamForm(vm: AddPlaylistViewModel, onDone: () -> Unit, onBack: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var portal by remember { mutableStateOf("") }
-    var user by remember { mutableStateOf("") }
-    var pass by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var portal by rememberSaveable { mutableStateOf("") }
+    var user by rememberSaveable { mutableStateOf("") }
+    var pass by rememberSaveable { mutableStateOf("") }
     Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Field(stringResource(R.string.field_name), name) { name = it }
         Field(stringResource(R.string.field_portal), portal) { portal = it }

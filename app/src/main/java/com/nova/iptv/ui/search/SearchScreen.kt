@@ -72,7 +72,7 @@ class SearchViewModel @Inject constructor(
     val clock24h = settings.settings
     val results = query.debounce(200).flatMapLatest { q ->
         if (q.isBlank()) flowOf(emptyList())
-        else search.query(settings.settings.value.lastPlaylistId.ifBlank { "demo" }, q)
+        else search.query(settings.settings.value.lastPlaylistId, q)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(4_000), emptyList())
 }
 

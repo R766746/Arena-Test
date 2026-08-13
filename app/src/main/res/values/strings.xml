@@ -45,9 +45,10 @@
 
     <!-- First run -->
     <string name="first_run_title">Welcome to NOVA</string>
-    <string name="first_run_body">NOVA is a player only. It does not provide IPTV channels or VOD. Add a playlist you already have, or browse the offline showcase.</string>
+    <string name="first_run_body">NOVA is a player only. Add a playlist from your IPTV provider to begin.</string>
     <string name="first_run_add">Add a playlist</string>
-    <string name="first_run_showcase">Browse showcase</string>
+    <string name="welcome_subtitle">Welcome. Configure your stream.</string>
+    <string name="welcome_body">Choose your provider format. Your playlist credentials remain on this device.</string>
     <string name="first_run_legal">You are responsible for the legality of any streams you add.</string>
 
     <!-- Add playlist -->
@@ -143,7 +144,6 @@
     <string name="playlists_add">Add playlist</string>
     <string name="playlists_update_now">Update now</string>
     <string name="playlists_delete">Delete</string>
-    <string name="playlists_demo_locked">The showcase playlist cannot be deleted.</string>
     <string name="playlists_user_agent">User-Agent</string>
     <string name="playlists_epg_sources">Assigned EPG sources</string>
     <string name="playlists_interval">Auto-update interval (hours)</string>
