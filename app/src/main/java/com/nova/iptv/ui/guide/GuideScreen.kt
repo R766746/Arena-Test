@@ -19,10 +19,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -38,6 +42,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -129,12 +135,16 @@ fun GuideScreen(
     ) {
         NovaTopBar(clock24h = state.settings.clock24h)
         TimeHeader(state.windowStart, state.hours, state.settings.clock24h, pxPerHour)
-        if (state.rows.isEmpty()) {
-            EmptyState(stringResource(R.string.empty_epg), stringResource(R.string.empty_channels_hint), Modifier.weight(1f))
+        if (state.loading) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("Loading guide…", color = colors.muted, fontSize = 14.sp)
+            }
+        } else if (state.rows.isEmpty()) {
+            EmptyState("No Live TV channels", stringResource(R.string.empty_channels_hint), Modifier.weight(1f))
         } else {
             Box(Modifier.weight(1f)) {
                 TvLazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(state.rows, key = { _, r -> r.channel.id }) { _, row ->
+                    itemsIndexed(state.rows, key = { _, r -> r.channel.id }, contentType = { _, _ -> "guide-row" }) { _, row ->
                         GuideRowView(
                             row = row,
                             windowStart = state.windowStart,
@@ -376,8 +386,14 @@ private fun ProgramInfoDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = LocalNovaPalette.current
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(0.5f)), contentAlignment = Alignment.Center) {
-        GlassPanel(Modifier.width(520.dp)) {
+    val watchFocus = remember { FocusRequester() }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            runCatching { watchFocus.requestFocus() }
+        }
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.5f)), contentAlignment = Alignment.Center) {
+        GlassPanel(Modifier.width(720.dp)) {
             Column(Modifier.padding(24.dp)) {
                 Text(program.title, color = colors.onBackground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 Text(
@@ -392,7 +408,7 @@ private fun ProgramInfoDialog(
                 Text(program.description.ifBlank { "No description." }, color = colors.onBackground, fontSize = 14.sp)
                 Spacer(Modifier.height(16.dp))
                 Row {
-                    FocusButton(label = stringResource(R.string.watch_live), onClick = onWatch)
+                    FocusButton(label = stringResource(R.string.watch_live), onClick = onWatch, modifier = Modifier.focusRequester(watchFocus))
                     Spacer(Modifier.width(8.dp))
                     if (program.isPast(now) && channel?.catchup == true) {
                         FocusButton(label = stringResource(R.string.play_catchup), onClick = onCatchup)
@@ -408,5 +424,6 @@ private fun ProgramInfoDialog(
                 }
             }
         }
+    }
     }
 }

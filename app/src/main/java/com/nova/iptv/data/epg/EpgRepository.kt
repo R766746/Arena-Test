@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
@@ -48,6 +51,7 @@ class EpgRepositoryImpl @Inject constructor(
     private val matcher: EpgMatcher,
     private val settings: SettingsRepository,
 ) : EpgRepository {
+    private val ingestMutex = Mutex()
 
     override suspend fun nowAndNext(channelId: String, nowMs: Long): NowNext {
         val now = db.programs().now(channelId, nowMs)?.toModel()
@@ -69,67 +73,86 @@ class EpgRepositoryImpl @Inject constructor(
         timeShiftHours: Int,
         sourceName: String,
     ): Result<Int> = withContext(Dispatchers.IO) {
-        val started = System.currentTimeMillis()
-        runCatching {
+        ingestMutex.withLock {
+            val started = System.currentTimeMillis()
+            runCatching {
             val req = Request.Builder().url(url).header("User-Agent", Playlist.DEFAULT_UA).build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) error("EPG HTTP ${resp.code}")
                 val body = resp.body ?: error("empty EPG body")
-                val parsed = XmltvParser.parse(
-                    body.byteStream(),
-                    timeShiftHours,
-                    url,
-                ) { /* yield every 500 inside parser */ }
-                val sourceId = sourceName.ifBlank { url.hashCode().toString() }
-                db.xmltvChannels().deleteBySource(sourceId)
-                parsed.channels.chunked(500).forEach { chunk ->
-                    db.xmltvChannels().upsertAll(
-                        chunk.flatMap { xc ->
-                            xc.displayNames.ifEmpty { listOf(xc.id) }.map { name ->
-                                XmltvChannelEntity(
-                                    xmltvId = xc.id,
-                                    displayName = name,
-                                    iconUrl = xc.icon,
-                                    sourceId = sourceId,
-                                )
-                            }
-                        },
-                    )
-                    yield()
-                }
+                // A display-name rename must not create a second logical feed.
+                val sourceId = "$playlistId\u0000$url".hashCode().toString()
+                val syncToken = newId()
                 val channels = db.channels().byPlaylist(playlistId)
                 val idMap = HashMap<String, String>()
                 channels.forEach { ch ->
                     if (ch.epgId.isNotBlank()) idMap[ch.epgId.lowercase()] = ch.id
                 }
-                val tokens = settings.settings.value.nameStripTokens
-                val xml = parsed.channels
-                val matches = matcher.match(channels.map { it.toModel() }, xml, tokens)
-                matches.forEach { m ->
-                    idMap[m.xmltvId.lowercase()] = m.channelId
-                    if (m.method != MatchResult.Method.EXACT_ID) {
-                        db.channels().setEpgId(m.channelId, m.xmltvId)
-                    }
-                }
                 var inserted = 0
-                parsed.programmes.chunked(500).forEach { chunk ->
-                    val rows = chunk.mapNotNull { r ->
-                        val chId = idMap[r.channelId.lowercase()] ?: return@mapNotNull null
-                        ProgramEntity(
-                            id = "xmltv:${r.channelId}:${r.startMs}",
-                            channelId = chId,
-                            title = r.title,
-                            description = r.description,
-                            category = r.category,
-                            startMs = r.startMs,
-                            endMs = r.endMs,
-                            catchup = r.endMs < System.currentTimeMillis(),
-                        )
-                    }
-                    if (rows.isNotEmpty()) db.programs().upsertAll(rows)
-                    inserted += rows.size
-                    yield()
-                }
+                XmltvParser.parse(
+                    input = body.byteStream(),
+                    timeShiftHours = timeShiftHours,
+                    urlHint = url,
+                    collectProgrammes = false,
+                    onChannelsReady = { xml ->
+                        runBlocking {
+                            db.xmltvChannels().deleteBySource(sourceId)
+                            xml.chunked(500).forEach { chunk ->
+                                db.xmltvChannels().upsertAll(
+                                    chunk.flatMap { xc ->
+                                        xc.displayNames.ifEmpty { listOf(xc.id) }.map { name ->
+                                            XmltvChannelEntity(
+                                                xmltvId = xc.id,
+                                                displayName = name,
+                                                iconUrl = xc.icon,
+                                                sourceId = sourceId,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                            val matches = matcher.match(
+                                channels.map { it.toModel() },
+                                xml,
+                                settings.settings.value.nameStripTokens,
+                            )
+                            matches.forEach { match ->
+                                idMap[match.xmltvId.lowercase()] = match.channelId
+                                if (match.method != MatchResult.Method.EXACT_ID) {
+                                    db.channels().setEpgId(match.channelId, match.xmltvId)
+                                }
+                            }
+                        }
+                    },
+                    onProgrammeBatch = { batch ->
+                        runBlocking {
+                            val rows = batch.mapNotNull { programme ->
+                                val channelId = idMap[programme.channelId.lowercase()] ?: return@mapNotNull null
+                                ProgramEntity(
+                                    id = "xmltv:$sourceId:${programme.channelId}:${programme.startMs}",
+                                    channelId = channelId,
+                                    title = programme.title,
+                                    description = programme.description,
+                                    category = programme.category,
+                                    startMs = programme.startMs,
+                                    endMs = programme.endMs,
+                                    catchup = programme.endMs < System.currentTimeMillis(),
+                                    sourceId = sourceId,
+                                    syncToken = syncToken,
+                                )
+                            }
+                            if (rows.isNotEmpty()) db.programs().upsertAll(rows)
+                            inserted += rows.size
+                        }
+                    },
+                )
+                // Only a fully parsed feed may retire its previous future rows.
+                // Failed imports never reach this point, preserving the last cache.
+                db.programs().deleteStaleFutureForSource(
+                    sourceId = sourceId,
+                    syncToken = syncToken,
+                    fromMs = System.currentTimeMillis(),
+                )
                 val past = settings.settings.value.epgPastDays
                 prune(past)
                 db.diagnostics().upsert(
@@ -141,7 +164,8 @@ class EpgRepositoryImpl @Inject constructor(
                 )
                 inserted
             }
-        }.onFailure { Timber.e(it, "EPG ingest failed for %s", url) }
+            }.onFailure { Timber.e(it, "EPG ingest failed for %s", url) }
+        }
     }
 
     override suspend fun ingestPrograms(programs: List<Program>): Int = withContext(Dispatchers.IO) {
@@ -191,12 +215,10 @@ class EpgRepositoryImpl @Inject constructor(
 
     override suspend fun prune(pastDays: Int): Int {
         val cutoff = System.currentTimeMillis() - pastDays * 24L * 3600_000L
-        val n = db.programs().pruneBefore(cutoff)
-        // Best-effort vacuum: Room has no official vacuum API; ignored on failure.
-        runCatching {
-            db.openHelper.writableDatabase.execSQL("VACUUM")
-        }
-        return n
+        // DELETE is incremental and keeps Room responsive. VACUUM rewrites and
+        // exclusively locks the entire (often 100+ MB) guide database, which can
+        // freeze Live TV and Guide navigation during every background refresh.
+        return db.programs().pruneBefore(cutoff)
     }
 
     override suspend fun lastIngestDurationMs(): Long = db.diagnostics().get()?.lastEpgDurationMs ?: 0L

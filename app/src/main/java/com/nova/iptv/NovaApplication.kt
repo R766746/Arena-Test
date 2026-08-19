@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
@@ -55,7 +56,7 @@ class NovaApplication : Application(), Configuration.Provider, ImageLoaderFactor
         appScope.launch {
             // Remove the legacy showcase catalog from existing installations.
             runCatching { playlists.deletePlaylist("demo") }
-            val s = settings.settings.first()
+            val s = settings.loadedSettings.filterNotNull().first()
             if (s.lastPlaylistId == "demo") {
                 settings.update { it.copy(lastPlaylistId = "", lastChannelId = "", firstRunDone = false) }
             }

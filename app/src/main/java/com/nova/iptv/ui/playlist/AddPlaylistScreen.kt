@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
@@ -134,19 +136,18 @@ fun AddPlaylistRoute(
         Column(
             Modifier
                 .fillMaxWidth()
-                .widthIn(max = 960.dp)
+                .widthIn(max = 1040.dp)
                 .verticalScroll(rememberScrollState())
-                .imePadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 32.dp),
+                .padding(horizontal = 24.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("NOVA IPTV", color = colors.accent, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.welcome_subtitle), color = colors.muted, fontSize = 16.sp, modifier = Modifier.padding(top = 6.dp, bottom = 24.dp))
+            Text("NOVA IPTV", color = colors.accent, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.welcome_subtitle), color = colors.muted, fontSize = 14.sp, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
             GlassPanel(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(24.dp)) {
-                    Text(stringResource(R.string.add_playlist), color = colors.onBackground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                    Text(stringResource(R.string.welcome_body), color = colors.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp, bottom = 20.dp))
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text(stringResource(R.string.add_playlist), color = colors.onBackground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.welcome_body), color = colors.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
                     when (mode) {
                         AddMode.PICK -> BoxWithConstraints(Modifier.fillMaxWidth()) {
                             val compact = maxWidth < 680.dp
@@ -195,7 +196,7 @@ fun AddPlaylistRoute(
                 }
                 Text(mapped, color = colors.danger, modifier = Modifier.padding(top = 18.dp))
             }
-                    Text(stringResource(R.string.first_run_legal), color = colors.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 20.dp))
+                    Text(stringResource(R.string.first_run_legal), color = colors.muted, fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
                     if (mode == AddMode.PICK) {
                         FocusButton(label = stringResource(R.string.action_cancel), onClick = onBack, modifier = Modifier.padding(top = 16.dp))
                     }
@@ -227,7 +228,7 @@ private fun M3uForm(vm: AddPlaylistViewModel, onDone: () -> Unit, onBack: () -> 
     var url by rememberSaveable { mutableStateOf("") }
     var epg by rememberSaveable { mutableStateOf("") }
     var ua by rememberSaveable { mutableStateOf("") }
-    Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Field(stringResource(R.string.field_name), name) { name = it }
         Field(stringResource(R.string.field_url), url) { url = it }
         Field(stringResource(R.string.field_epg_url), epg) { epg = it }
@@ -245,7 +246,7 @@ private fun XtreamForm(vm: AddPlaylistViewModel, onDone: () -> Unit, onBack: () 
     var portal by rememberSaveable { mutableStateOf("") }
     var user by rememberSaveable { mutableStateOf("") }
     var pass by rememberSaveable { mutableStateOf("") }
-    Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Field(stringResource(R.string.field_name), name) { name = it }
         Field(stringResource(R.string.field_portal), portal) { portal = it }
         Field(stringResource(R.string.field_username), user) { user = it }
@@ -260,15 +261,21 @@ private fun XtreamForm(vm: AddPlaylistViewModel, onDone: () -> Unit, onBack: () 
 @Composable
 private fun Field(label: String, value: String, onChange: (String) -> Unit) {
     val colors = LocalNovaPalette.current
+    var focused by rememberSaveable { mutableStateOf(false) }
     Text(label, color = colors.muted, fontSize = 11.sp, letterSpacing = 1.2.sp)
     BasicTextField(
         value = value,
         onValueChange = onChange,
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.surface2, RoundedCornerShape(8.dp))
-            .padding(12.dp)
-            .glowBorderOnFocus(radius = 8.dp),
+            .onFocusChanged { focused = it.isFocused }
+            .background(colors.surface2, RoundedCornerShape(10.dp))
+            .border(
+                width = if (focused) 2.dp else 1.dp,
+                color = if (focused) colors.accent else colors.muted.copy(alpha = 0.28f),
+                shape = RoundedCornerShape(10.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         textStyle = TextStyle(color = colors.onBackground, fontSize = 14.sp),
         cursorBrush = SolidColor(colors.accent),
         singleLine = true,

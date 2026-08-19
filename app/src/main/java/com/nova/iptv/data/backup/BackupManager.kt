@@ -17,9 +17,10 @@ import javax.inject.Singleton
 
 @JsonClass(generateAdapter = true)
 data class BackupPayload(
-    val version: Int = 1,
+    val version: Int = 2,
     val playlists: List<BackupPlaylist> = emptyList(),
     val favorites: List<String> = emptyList(),
+    val watchlist: List<String> = emptyList(),
     val settings: Map<String, String> = emptyMap(),
 )
 
@@ -60,10 +61,12 @@ class BackupManager @Inject constructor(
             )
         }
         val favs = pls.flatMap { playlists.favorites(it.id).first().map { c -> c.id } }
+        val watchlist = pls.flatMap { playlists.watchlistIds(it.id) }
         val s = settings.settings.value
         val payload = BackupPayload(
             playlists = pls,
             favorites = favs,
+            watchlist = watchlist,
             settings = mapOf(
                 "theme" to s.theme.name,
                 "accent" to s.accentArgb.toString(),
@@ -99,6 +102,9 @@ class BackupManager @Inject constructor(
         payload.favorites.forEach { id ->
             val channel = playlists.getChannel(id)
             if (channel != null && !channel.favorite) playlists.toggleFavorite(id)
+        }
+        payload.watchlist.forEach { id ->
+            if (playlists.getVod(id) != null) playlists.setWatchlist(id, true)
         }
         settings.update { current ->
             current.copy(

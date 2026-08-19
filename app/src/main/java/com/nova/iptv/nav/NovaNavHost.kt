@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.nativeKeyCode
@@ -22,6 +23,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -32,6 +34,7 @@ import com.nova.iptv.data.local.SettingsRepository
 import com.nova.iptv.data.player.PlayerManager
 import com.nova.iptv.data.playlist.PlaylistRepository
 import com.nova.iptv.domain.model.StartupMode
+import com.nova.iptv.domain.model.Playlist
 import com.nova.iptv.ui.components.ExitConfirm
 import com.nova.iptv.ui.guide.GuideRoute
 import com.nova.iptv.ui.home.HomeRoute
@@ -49,7 +52,10 @@ import com.nova.iptv.ui.vod.DetailRoute
 import com.nova.iptv.ui.vod.MoviesRoute
 import com.nova.iptv.ui.vod.SeriesRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 import androidx.lifecycle.ViewModel
 
@@ -58,12 +64,17 @@ class RootViewModel @Inject constructor(
     val settings: SettingsRepository,
     val playerManager: PlayerManager,
     val playlists: PlaylistRepository,
-) : ViewModel()
+) : ViewModel() {
+    val startupPlaylists: StateFlow<List<Playlist>?> = playlists.playlists()
+        .map<List<Playlist>, List<Playlist>?> { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+}
 
 @Composable
 fun NovaNav(vm: RootViewModel = hiltViewModel()) {
     val settings by vm.settings.settings.collectAsStateWithLifecycle()
-    val playlists by vm.playlists.playlists().collectAsStateWithLifecycle(emptyList())
+    val loadedSettings by vm.settings.loadedSettings.collectAsStateWithLifecycle()
+    val playlists by vm.startupPlaylists.collectAsStateWithLifecycle()
     NovaTheme(settings) {
         val nav = rememberNavController()
         val ctx = LocalContext.current
@@ -78,7 +89,7 @@ fun NovaNav(vm: RootViewModel = hiltViewModel()) {
         BackHandler(enabled = true) {
             when {
                 route?.startsWith("player") == true -> nav.popBackStack()
-                route == Routes.Home || route == Routes.Splash -> exit = true
+                route == Routes.Home || route == Routes.HomeFavorites || route == Routes.Splash -> exit = true
                 nav.previousBackStackEntry != null -> nav.popBackStack()
                 else -> exit = true
             }
@@ -120,20 +131,23 @@ fun NovaNav(vm: RootViewModel = hiltViewModel()) {
             ) {
                 composable(Routes.Splash) {
                     SplashScreen()
-                    LaunchedEffect(settings) {
-                        delay(1600)
-                        if (playlists.isEmpty()) {
+                    LaunchedEffect(loadedSettings, playlists) {
+                        val readySettings = loadedSettings ?: return@LaunchedEffect
+                        val readyPlaylists = playlists ?: return@LaunchedEffect
+                        withFrameNanos { }
+                        if (readyPlaylists.isEmpty()) {
                             nav.navigate(Routes.AddPlaylist) {
                                 popUpTo(Routes.Splash) { inclusive = true }
                             }
                             return@LaunchedEffect
                         }
-                        val dest = when (settings.startupMode) {
-                            StartupMode.HOME, StartupMode.FAVORITES -> Routes.Home
+                        val dest = when (readySettings.startupMode) {
+                            StartupMode.HOME -> Routes.Home
+                            StartupMode.FAVORITES -> Routes.HomeFavorites
                             StartupMode.GUIDE -> Routes.Guide
                             StartupMode.LAST_CHANNEL -> {
-                                if (settings.lastChannelId.isNotBlank()) {
-                                    Routes.player(PlayTarget.live(settings.lastChannelId))
+                                if (readySettings.lastChannelId.isNotBlank()) {
+                                    Routes.player(PlayTarget.live(readySettings.lastChannelId))
                                 } else Routes.Home
                             }
                         }
@@ -145,6 +159,14 @@ fun NovaNav(vm: RootViewModel = hiltViewModel()) {
                         onNavigate = { go(it) },
                         onPlay = { target -> nav.navigate(Routes.player(target)) },
                         onDetail = { kind, id -> nav.navigate(Routes.detail(kind, id)) },
+                    )
+                }
+                composable(Routes.HomeFavorites) {
+                    HomeRoute(
+                        onNavigate = { go(it) },
+                        onPlay = { target -> nav.navigate(Routes.player(target)) },
+                        onDetail = { kind, id -> nav.navigate(Routes.detail(kind, id)) },
+                        openFavoritesOnStart = true,
                     )
                 }
                 composable(Routes.Guide) {

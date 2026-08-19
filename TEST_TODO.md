@@ -20,13 +20,13 @@ For each test:
 
 ## Checklist
 
-- [ ] 01 — Exit popup focus
+- [x] 01 — Exit popup focus
   - Press Back from the Home screen.
   - Confirm focus moves to **Stay**.
   - Confirm Left/Right moves only between **Stay** and **Exit**.
   - Confirm Up/Down does not move the background selection.
   - Confirm Back closes the popup and restores the previous screen focus.
-  - Result/notes:
+  - Result/notes: Passed on connected Android TV (2026-08-17). Automated D-pad test confirms Stay receives initial focus, Left/Right remains inside the dialog, Up/Down is blocked, and Back dismisses to Stay.
 
 - [ ] 02 — Xtream import duration
   - Add a valid Xtream Codes account.

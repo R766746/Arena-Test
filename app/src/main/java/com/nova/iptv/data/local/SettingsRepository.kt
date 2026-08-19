@@ -13,6 +13,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.nova.iptv.core.util.hashPin
 import com.nova.iptv.domain.model.AnimSpeed
 import com.nova.iptv.domain.model.AppSettings
+import com.nova.iptv.domain.model.PosterSize
 import com.nova.iptv.domain.model.AspectMode
 import com.nova.iptv.domain.model.BufferSize
 import com.nova.iptv.domain.model.EpgRowHeight
@@ -41,8 +42,12 @@ class SettingsRepository @Inject constructor(
     private val store = context.settingsStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    val settings: StateFlow<AppSettings> = store.data
-        .map { it.toSettings() }
+    val loadedSettings: StateFlow<AppSettings?> = store.data
+        .map<Preferences, AppSettings?> { it.toSettings() }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
+    val settings: StateFlow<AppSettings> = loadedSettings
+        .map { it ?: AppSettings() }
         .stateIn(scope, SharingStarted.Eagerly, AppSettings())
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
@@ -52,6 +57,7 @@ class SettingsRepository @Inject constructor(
             p[Keys.accent] = next.accentArgb
             p[Keys.fontScale] = next.fontScale
             p[Keys.listStyle] = next.listStyle.name
+            p[Keys.posterSize] = next.posterSize.name
             p[Keys.showNumbers] = next.showNumbers
             p[Keys.clock24h] = next.clock24h
             p[Keys.animSpeed] = next.animSpeed.name
@@ -73,12 +79,19 @@ class SettingsRepository @Inject constructor(
             p[Keys.aspect] = next.aspect.name
             p[Keys.seekStep] = next.seekStepSec
             p[Keys.subtitleSize] = next.subtitleSize
+            p[Keys.autoPlayNextEpisode] = next.autoPlayNextEpisode
             p[Keys.externalPlayer] = next.externalPlayerPackage
             p[Keys.startup] = next.startupMode.name
             p[Keys.lastChannel] = next.lastChannelId
             p[Keys.lastPlaylist] = next.lastPlaylistId
             p[Keys.lastCategory] = next.lastCategory.name
             p[Keys.lastGroup] = next.lastGroup
+            p[Keys.multiViewPlaylist] = next.multiViewPlaylistId
+            p[Keys.multiViewLayout] = next.multiViewLayout
+            p[Keys.multiViewChannel1] = next.multiViewChannel1Id
+            p[Keys.multiViewChannel2] = next.multiViewChannel2Id
+            p[Keys.multiViewChannel3] = next.multiViewChannel3Id
+            p[Keys.multiViewChannel4] = next.multiViewChannel4Id
             p[Keys.parental] = next.parentalEnabled
             p[Keys.pinHash] = next.parentalPinHash
             p[Keys.pinSalt] = next.parentalPinSalt
@@ -117,6 +130,7 @@ class SettingsRepository @Inject constructor(
             accentArgb = getOr(Keys.accent, 0xFF3D8BFD),
             fontScale = getOr(Keys.fontScale, 1f),
             listStyle = enumValueOfOr(this[Keys.listStyle], ListStyle.LIST),
+            posterSize = enumValueOfOr(this[Keys.posterSize], PosterSize.MEDIUM),
             showNumbers = getOr(Keys.showNumbers, true),
             clock24h = getOr(Keys.clock24h, true),
             animSpeed = enumValueOfOr(this[Keys.animSpeed], AnimSpeed.NORMAL),
@@ -138,12 +152,19 @@ class SettingsRepository @Inject constructor(
             aspect = enumValueOfOr(this[Keys.aspect], AspectMode.FIT),
             seekStepSec = getOr(Keys.seekStep, 10),
             subtitleSize = getOr(Keys.subtitleSize, 18),
+            autoPlayNextEpisode = getOr(Keys.autoPlayNextEpisode, true),
             externalPlayerPackage = getOr(Keys.externalPlayer, ""),
             startupMode = enumValueOfOr(this[Keys.startup], StartupMode.HOME),
             lastChannelId = getOr(Keys.lastChannel, ""),
             lastPlaylistId = getOr(Keys.lastPlaylist, ""),
             lastCategory = enumValueOfOr(this[Keys.lastCategory], HomeCategory.LIVE),
             lastGroup = getOr(Keys.lastGroup, ""),
+            multiViewPlaylistId = getOr(Keys.multiViewPlaylist, ""),
+            multiViewLayout = getOr(Keys.multiViewLayout, 2).let { if (it == 4) 4 else 2 },
+            multiViewChannel1Id = getOr(Keys.multiViewChannel1, ""),
+            multiViewChannel2Id = getOr(Keys.multiViewChannel2, ""),
+            multiViewChannel3Id = getOr(Keys.multiViewChannel3, ""),
+            multiViewChannel4Id = getOr(Keys.multiViewChannel4, ""),
             parentalEnabled = getOr(Keys.parental, false),
             parentalPinHash = getOr(Keys.pinHash, ""),
             parentalPinSalt = getOr(Keys.pinSalt, ""),
@@ -168,6 +189,7 @@ class SettingsRepository @Inject constructor(
         val accent = longPreferencesKey("accent")
         val fontScale = floatPreferencesKey("fontScale")
         val listStyle = stringPreferencesKey("listStyle")
+        val posterSize = stringPreferencesKey("posterSize")
         val showNumbers = booleanPreferencesKey("showNumbers")
         val clock24h = booleanPreferencesKey("clock24h")
         val animSpeed = stringPreferencesKey("animSpeed")
@@ -189,12 +211,19 @@ class SettingsRepository @Inject constructor(
         val aspect = stringPreferencesKey("aspect")
         val seekStep = intPreferencesKey("seekStep")
         val subtitleSize = intPreferencesKey("subtitleSize")
+        val autoPlayNextEpisode = booleanPreferencesKey("autoPlayNextEpisode")
         val externalPlayer = stringPreferencesKey("externalPlayer")
         val startup = stringPreferencesKey("startup")
         val lastChannel = stringPreferencesKey("lastChannel")
         val lastPlaylist = stringPreferencesKey("lastPlaylist")
         val lastCategory = stringPreferencesKey("lastCategory")
         val lastGroup = stringPreferencesKey("lastGroup")
+        val multiViewPlaylist = stringPreferencesKey("multiViewPlaylist")
+        val multiViewLayout = intPreferencesKey("multiViewLayout")
+        val multiViewChannel1 = stringPreferencesKey("multiViewChannel1")
+        val multiViewChannel2 = stringPreferencesKey("multiViewChannel2")
+        val multiViewChannel3 = stringPreferencesKey("multiViewChannel3")
+        val multiViewChannel4 = stringPreferencesKey("multiViewChannel4")
         val parental = booleanPreferencesKey("parental")
         val pinHash = stringPreferencesKey("pinHash")
         val pinSalt = stringPreferencesKey("pinSalt")

@@ -2,6 +2,8 @@ package com.nova.iptv.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nova.iptv.data.local.dao.ChannelDao
 import com.nova.iptv.data.local.dao.DiagnosticsDao
 import com.nova.iptv.data.local.dao.EpgSourceDao
@@ -42,8 +44,8 @@ import com.nova.iptv.data.local.entity.XmltvChannelEntity
         XmltvChannelEntity::class,
         DiagnosticsEntity::class,
     ],
-    version = 1,
-    exportSchema = false,
+    version = 2,
+    exportSchema = true,
 )
 abstract class NovaDatabase : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
@@ -56,4 +58,17 @@ abstract class NovaDatabase : RoomDatabase() {
     abstract fun epgSources(): EpgSourceDao
     abstract fun xmltvChannels(): XmltvChannelDao
     abstract fun diagnostics(): DiagnosticsDao
+
+    companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE programs ADD COLUMN sourceId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE programs ADD COLUMN syncToken TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_programs_sourceId_syncToken " +
+                        "ON programs(sourceId, syncToken)",
+                )
+            }
+        }
+    }
 }

@@ -2,8 +2,8 @@ package com.nova.iptv.nav
 
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.SoundEffectConstants
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -31,11 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
@@ -50,11 +47,13 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalView
 import com.nova.iptv.ui.theme.FocusGlow
 import com.nova.iptv.ui.theme.FocusRing
 import com.nova.iptv.ui.theme.LocalAnimMs
 import com.nova.iptv.ui.theme.LocalNovaPalette
 import com.nova.iptv.ui.theme.novaTween
+import com.nova.iptv.core.perf.LowRam
 
 /**
  * TV focus helpers. Official TvLazy* types from androidx.tv.foundation were
@@ -77,16 +76,15 @@ fun Modifier.scaleOnFocus(
 ): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
     val anim = LocalAnimMs.current
-    val scale by animateFloatAsState(
+    val animate = !LowRam.isLowRam && anim > 0
+    val scale = if (animate) animateFloatAsState(
         targetValue = if (focused) focusedScale else 1f,
-        animationSpec = novaTween(anim),
-        label = "focusScale",
-    )
-    val ty by animateFloatAsState(
+        animationSpec = novaTween(anim), label = "focusScale",
+    ).value else if (focused) focusedScale else 1f
+    val ty = if (animate) animateFloatAsState(
         targetValue = if (focused) -extraY.value else 0f,
-        animationSpec = novaTween(anim),
-        label = "focusY",
-    )
+        animationSpec = novaTween(anim), label = "focusY",
+    ).value else if (focused) -extraY.value else 0f
     onFocusChanged { focused = it.isFocused }
         .graphicsLayer {
             scaleX = scale
@@ -105,15 +103,16 @@ fun Modifier.glowBorderOnFocus(
     val color = accent ?: palette.accent
     var focused by remember { mutableStateOf(false) }
     onFocusChanged { focused = it.isFocused }
-        .then(
+        .drawWithContent {
+            drawContent()
             if (focused) {
-                Modifier
-                    .shadow(glow, RoundedCornerShape(radius), ambientColor = color.copy(0.55f), spotColor = color.copy(0.7f))
-                    .border(width, color, RoundedCornerShape(radius))
-            } else {
-                Modifier
-            },
-        )
+                val corner = CornerRadius(radius.toPx(), radius.toPx())
+                if (!LowRam.isLowRam && glow > 0.dp) {
+                    drawRoundRect(color.copy(alpha = 0.24f), cornerRadius = corner, style = Stroke(glow.toPx()))
+                }
+                drawRoundRect(color, cornerRadius = corner, style = Stroke(width.toPx()))
+            }
+        }
 }
 
 fun Modifier.drawFocusRing(
@@ -151,15 +150,27 @@ fun Modifier.dpadClickable(
     onClick: () -> Unit,
 ): Modifier = composed {
     val interaction = remember { MutableInteractionSource() }
+    val hostView = LocalView.current
     var downAt by remember { mutableLongStateOf(0L) }
     var longFired by remember { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
+    fun clickWithSound() {
+        if (hostView.isSoundEffectsEnabled) hostView.playSoundEffect(SoundEffectConstants.CLICK)
+        onClick()
+    }
     clickable(
         enabled = enabled,
         interactionSource = interaction,
         indication = null,
-        onClick = onClick,
+        onClick = ::clickWithSound,
     )
         .focusable(enabled, interaction)
+        .onFocusChanged { state ->
+            if (state.isFocused && !focused && hostView.isSoundEffectsEnabled) {
+                hostView.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN)
+            }
+            focused = state.isFocused
+        }
         .onKeyEvent { event ->
             val code = event.nativeKeyEvent.keyCode
             val isOk = code == KeyEvent.KEYCODE_DPAD_CENTER ||
@@ -189,7 +200,7 @@ fun Modifier.dpadClickable(
                     downAt = 0L
                     if (!longFired) {
                         if (onLongPress != null && held >= longPressMs) onLongPress()
-                        else onClick()
+                        else clickWithSound()
                     }
                     true
                 }
@@ -199,13 +210,10 @@ fun Modifier.dpadClickable(
         .pointerInput(onClick, onLongPress) {
             detectTapGestures(
                 onLongPress = { onLongPress?.invoke() },
-                onTap = { onClick() },
+                onTap = { clickWithSound() },
             )
         }
 }
-
-fun Modifier.restoreFocus(requester: FocusRequester): Modifier =
-    focusRequester(requester).focusRestorer()
 
 @Composable
 fun TvLazyColumn(
@@ -216,11 +224,12 @@ fun TvLazyColumn(
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     content: LazyListScope.() -> Unit,
 ) {
-    val restorer = rememberFocusRestorer()
+    var lastAcceptedRepeatAt by remember { mutableLongStateOf(0L) }
     LazyColumn(
-        modifier = modifier
-            .focusRequester(restorer)
-            .focusRestorer(),
+        modifier = modifier.limitDpadRepeatRate(
+            lastAcceptedAt = { lastAcceptedRepeatAt },
+            onAccepted = { lastAcceptedRepeatAt = it },
+        ),
         state = state,
         contentPadding = contentPadding,
         verticalArrangement = verticalArrangement,
@@ -238,11 +247,12 @@ fun TvLazyRow(
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     content: LazyListScope.() -> Unit,
 ) {
-    val restorer = rememberFocusRestorer()
+    var lastAcceptedRepeatAt by remember { mutableLongStateOf(0L) }
     LazyRow(
-        modifier = modifier
-            .focusRequester(restorer)
-            .focusRestorer(),
+        modifier = modifier.limitDpadRepeatRate(
+            lastAcceptedAt = { lastAcceptedRepeatAt },
+            onAccepted = { lastAcceptedRepeatAt = it },
+        ),
         state = state,
         contentPadding = contentPadding,
         horizontalArrangement = horizontalArrangement,
@@ -261,18 +271,42 @@ fun TvLazyVerticalGrid(
     horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(12.dp),
     content: LazyGridScope.() -> Unit,
 ) {
-    val restorer = rememberFocusRestorer()
+    var lastAcceptedRepeatAt by remember { mutableLongStateOf(0L) }
     LazyVerticalGrid(
         columns = columns,
-        modifier = modifier
-            .focusRequester(restorer)
-            .focusRestorer(),
+        modifier = modifier.limitDpadRepeatRate(
+            lastAcceptedAt = { lastAcceptedRepeatAt },
+            onAccepted = { lastAcceptedRepeatAt = it },
+        ),
         state = state,
         contentPadding = contentPadding,
         verticalArrangement = verticalArrangement,
         horizontalArrangement = horizontalArrangement,
         content = content,
     )
+}
+
+/** Keep held-key focus traversal below the layout rate of low-powered TV devices. */
+private fun Modifier.limitDpadRepeatRate(
+    lastAcceptedAt: () -> Long,
+    onAccepted: (Long) -> Unit,
+): Modifier = onPreviewKeyEvent { event ->
+    val native = event.nativeKeyEvent
+    val isDirection = native.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+        native.keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+        native.keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+        native.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+    if (event.type != KeyEventType.KeyDown || !isDirection || native.repeatCount == 0) {
+        false
+    } else {
+        val eventTime = native.eventTime
+        if (eventTime - lastAcceptedAt() < 72L) {
+            true
+        } else {
+            onAccepted(eventTime)
+            false
+        }
+    }
 }
 
 fun Modifier.leftTo(target: FocusRequester): Modifier =

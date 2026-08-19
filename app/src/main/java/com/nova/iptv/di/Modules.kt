@@ -33,7 +33,7 @@ object DatabaseModule {
     @Singleton
     fun database(@ApplicationContext context: Context): NovaDatabase =
         Room.databaseBuilder(context, NovaDatabase::class.java, "nova.db")
-            .fallbackToDestructiveMigration()
+            .addMigrations(NovaDatabase.MIGRATION_1_2)
             .build()
 }
 

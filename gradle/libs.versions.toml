@@ -9,6 +9,7 @@ media3 = "1.5.1"
 hilt = "2.53.1"
 hiltExt = "1.2.0"
 room = "2.6.1"
+paging = "3.3.5"
 navigation = "2.8.5"
 datastore = "1.1.1"
 retrofit = "2.11.0"
@@ -76,6 +77,9 @@ hilt-ext-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.r
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+room-paging = { group = "androidx.room", name = "room-paging", version.ref = "room" }
+paging-runtime = { group = "androidx.paging", name = "paging-runtime", version.ref = "paging" }
+paging-compose = { group = "androidx.paging", name = "paging-compose", version.ref = "paging" }
 
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
 

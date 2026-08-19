@@ -9,6 +9,8 @@ import com.nova.iptv.data.local.entity.PlaylistEntity
 import com.nova.iptv.data.local.entity.VodEntity
 import com.nova.iptv.data.local.entity.WatchHistoryEntity
 import com.nova.iptv.domain.model.Channel
+import com.nova.iptv.domain.model.CatalogSort
+import com.nova.iptv.domain.model.CatalogGroup
 import com.nova.iptv.domain.model.Episode
 import com.nova.iptv.domain.model.Playlist
 import com.nova.iptv.domain.model.SearchHit
@@ -20,6 +22,15 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.flowOn
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.map
+import androidx.sqlite.db.SimpleSQLiteQuery
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -27,15 +38,38 @@ interface PlaylistRepository {
     fun playlists(): Flow<List<Playlist>>
     fun channels(playlistId: String): Flow<List<Channel>>
     fun channelsByGroup(playlistId: String, group: String): Flow<List<Channel>>
+    fun pagedChannels(
+        playlistId: String,
+        groupId: String,
+        query: String = "",
+        sort: CatalogSort = CatalogSort.PROVIDER,
+    ): Flow<PagingData<Channel>>
     fun favorites(playlistId: String): Flow<List<Channel>>
     fun groups(playlistId: String): Flow<List<String>>
+    fun channelGroups(playlistId: String): Flow<List<CatalogGroup>>
+    fun channelCount(playlistId: String): Flow<Int>
+    fun favoriteCount(playlistId: String): Flow<Int>
+    fun recentChannelCount(playlistId: String): Flow<Int>
     fun vod(playlistId: String, kind: String): Flow<List<VodItem>>
+    fun pagedVod(
+        playlistId: String,
+        kind: String,
+        genre: String? = null,
+        continueWatching: Boolean = false,
+        watchlist: Boolean = false,
+        query: String = "",
+        sort: CatalogSort = CatalogSort.PROVIDER,
+    ): Flow<PagingData<VodItem>>
+    fun vodGroups(playlistId: String, kind: String): Flow<List<CatalogGroup>>
+    fun watchlistCount(playlistId: String, kind: String): Flow<Int>
+    suspend fun watchlistIds(playlistId: String): List<String>
     fun episodes(seriesId: String): Flow<List<Episode>>
     fun history(limit: Int = 20): Flow<List<WatchHistory>>
     fun recentChannels(playlistId: String): Flow<List<Channel>>
     fun searchAll(playlistId: String, query: String): Flow<List<SearchHit>>
 
     suspend fun snapshotChannels(playlistId: String): List<Channel>
+    suspend fun snapshotChannelsLimited(playlistId: String, limit: Int): List<Channel>
     suspend fun getPlaylist(id: String): Playlist?
     suspend fun getChannel(id: String): Channel?
     suspend fun getVod(id: String): VodItem?
@@ -77,6 +111,54 @@ class PlaylistRepositoryImpl @Inject constructor(
         if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
         else db.channels().observeByGroup(playlistId, group).map { it.map { e -> e.toModel() } }
 
+    override fun pagedChannels(playlistId: String, groupId: String, query: String, sort: CatalogSort): Flow<PagingData<Channel>> {
+        if (playlistId.isBlank()) return kotlinx.coroutines.flow.flowOf(PagingData.empty())
+        if (groupId == "recent") {
+            val queryClause = query.trim().takeIf(String::isNotBlank)?.let { "AND c.name LIKE ? ESCAPE '\\' COLLATE NOCASE" }.orEmpty()
+            val args = mutableListOf<Any>(playlistId)
+            if (queryClause.isNotEmpty()) args += "%${escapeLike(query.trim())}%"
+            val order = when (sort) {
+                CatalogSort.PROVIDER -> "h.atMs DESC"
+                CatalogSort.TITLE -> "c.name COLLATE NOCASE, h.atMs DESC"
+                CatalogSort.NEWEST -> "c.number, c.name COLLATE NOCASE"
+            }
+            val sql = """
+                SELECT c.* FROM channels c
+                INNER JOIN watch_history h ON h.refId = c.id
+                WHERE c.playlistId = ? AND c.hidden = 0 AND h.kind = 'LIVE'
+                $queryClause
+                ORDER BY $order
+            """.trimIndent()
+            return Pager(
+                PagingConfig(pageSize = 60, initialLoadSize = 120, prefetchDistance = 15, enablePlaceholders = false, maxSize = 240),
+            ) { db.channels().pagingSource(SimpleSQLiteQuery(sql, args.toTypedArray())) }
+                .flow.map { page -> page.map { it.toModel() } }
+        }
+        val args = mutableListOf<Any>(playlistId)
+        val filter = when {
+            groupId == "favorites" -> "AND favorite = 1"
+            groupId.startsWith("g:") -> {
+                args += groupId.removePrefix("g:")
+                "AND groupName = ?"
+            }
+            else -> ""
+        }
+        val queryClause = query.trim().takeIf(String::isNotBlank)?.let {
+            args += "%${escapeLike(it)}%"
+            "AND name LIKE ? ESCAPE '\\' COLLATE NOCASE"
+        }.orEmpty()
+        val order = when (sort) {
+            CatalogSort.PROVIDER -> "userOrder, number, name"
+            CatalogSort.TITLE -> "name COLLATE NOCASE, userOrder"
+            CatalogSort.NEWEST -> "number, name COLLATE NOCASE"
+        }
+        val sql = "SELECT * FROM channels WHERE playlistId = ? AND hidden = 0 $filter $queryClause ORDER BY $order"
+        return Pager(
+            PagingConfig(pageSize = 60, initialLoadSize = 120, prefetchDistance = 15, enablePlaceholders = false, maxSize = 240),
+        ) { db.channels().pagingSource(SimpleSQLiteQuery(sql, args.toTypedArray())) }
+            .flow.map { page -> page.map { it.toModel() } }
+    }
+
     override fun favorites(playlistId: String): Flow<List<Channel>> =
         if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
         else db.channels().observeFavorites(playlistId).map { it.map { e -> e.toModel() } }
@@ -85,9 +167,84 @@ class PlaylistRepositoryImpl @Inject constructor(
         if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
         else db.channels().observeGroups(playlistId)
 
+    override fun channelGroups(playlistId: String): Flow<List<CatalogGroup>> =
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
+        else db.channels().observeGroupCounts(playlistId).map { rows -> rows.map { CatalogGroup(it.name, it.count) } }
+
+    override fun channelCount(playlistId: String): Flow<Int> =
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(0) else db.channels().observeCount(playlistId)
+
+    override fun favoriteCount(playlistId: String): Flow<Int> =
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(0) else db.channels().observeFavoriteCount(playlistId)
+
+    override fun recentChannelCount(playlistId: String): Flow<Int> =
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(0) else db.channels().observeRecentCount(playlistId)
+
     override fun vod(playlistId: String, kind: String): Flow<List<VodItem>> =
         if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
         else db.vod().observe(playlistId, kind).map { it.map { e -> e.toModel() } }
+
+    override fun pagedVod(
+        playlistId: String,
+        kind: String,
+        genre: String?,
+        continueWatching: Boolean,
+        watchlist: Boolean,
+        query: String,
+        sort: CatalogSort,
+    ): Flow<PagingData<VodItem>> {
+        if (playlistId.isBlank()) return kotlinx.coroutines.flow.flowOf(PagingData.empty())
+        val clauses = mutableListOf("playlistId = ?", "kind = ?")
+        val args = mutableListOf<Any>(playlistId, kind)
+        genre?.takeIf(String::isNotBlank)?.let {
+            clauses += "genresCsv LIKE ?"
+            args += "%$it%"
+        }
+        if (continueWatching) {
+            clauses += "id IN (SELECT refId FROM watch_history WHERE kind = ?)"
+            args += kind
+        }
+        if (watchlist) clauses += "watchlist = 1"
+        query.trim().takeIf(String::isNotBlank)?.let {
+            clauses += "title LIKE ? ESCAPE '\\' COLLATE NOCASE"
+            args += "%${escapeLike(it)}%"
+        }
+        val order = when (sort) {
+            CatalogSort.PROVIDER -> "pk"
+            CatalogSort.TITLE -> "title COLLATE NOCASE, pk"
+            CatalogSort.NEWEST -> "year DESC, title COLLATE NOCASE, pk"
+        }
+        val sql = "SELECT * FROM vod WHERE ${clauses.joinToString(" AND ")} ORDER BY $order"
+        return Pager(
+            PagingConfig(
+                pageSize = 60,
+                initialLoadSize = 120,
+                prefetchDistance = 15,
+                enablePlaceholders = false,
+                maxSize = 240,
+            ),
+        ) { db.vod().pagingSource(SimpleSQLiteQuery(sql, args.toTypedArray())) }
+            .flow
+            .map { page -> page.map { it.toModel() } }
+    }
+
+    override fun vodGroups(playlistId: String, kind: String): Flow<List<CatalogGroup>> =
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList())
+        else db.vod().observeGroupCounts(playlistId, kind).map { groups ->
+            groups.map { CatalogGroup(it.name, it.count) }
+        }
+
+    override fun watchlistCount(playlistId: String, kind: String): Flow<Int> =
+        if (playlistId.isBlank()) kotlinx.coroutines.flow.flowOf(0)
+        else db.vod().observeWatchlistCount(playlistId, kind)
+
+    override suspend fun watchlistIds(playlistId: String): List<String> =
+        if (playlistId.isBlank()) emptyList() else db.vod().watchlistIds(playlistId)
+
+    private fun escapeLike(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
 
     override fun episodes(seriesId: String): Flow<List<Episode>> =
         db.episodes().observe(seriesId).map { it.map { e -> e.toModel() } }
@@ -109,22 +266,31 @@ class PlaylistRepositoryImpl @Inject constructor(
             emit(emptyList())
             return@flow
         }
-        val hits = ArrayList<SearchHit>()
-        db.channels().search(playlistId, q).forEach {
-            hits += SearchHit("channel", it.id, it.name, it.groupName, it.logoUrl, it.logoColor)
-        }
         val now = System.currentTimeMillis()
-        db.programs().searchTitles(q, now - 8 * 3600_000L, now + 8 * 3600_000L).forEach {
-            hits += SearchHit("program", it.id, it.title, it.channelId)
-        }
-        db.vod().search(playlistId, q).forEach {
-            hits += SearchHit(it.kind.lowercase(), it.id, it.title, it.year.toString(), it.posterUrl)
+        val hits = coroutineScope {
+            val channels = async { db.channels().search(playlistId, q) }
+            val programs = async { db.programs().searchTitles(q, now - 8 * 3600_000L, now + 8 * 3600_000L) }
+            val vod = async { db.vod().search(playlistId, q) }
+            buildList {
+                channels.await().forEach {
+                    add(SearchHit("channel", it.id, it.name, it.groupName, it.logoUrl, it.logoColor))
+                }
+                programs.await().forEach {
+                    add(SearchHit("program", it.id, it.title, it.channelId))
+                }
+                vod.await().forEach {
+                    add(SearchHit(it.kind.lowercase(), it.id, it.title, it.year.toString(), it.posterUrl))
+                }
+            }.distinctBy { it.kind to it.id }.take(150)
         }
         emit(hits)
-    }
+    }.flowOn(Dispatchers.IO)
 
     override suspend fun snapshotChannels(playlistId: String): List<Channel> =
         db.channels().byPlaylist(playlistId).map { it.toModel() }
+
+    override suspend fun snapshotChannelsLimited(playlistId: String, limit: Int): List<Channel> =
+        db.channels().byPlaylistLimited(playlistId, limit).map { it.toModel() }
 
     override suspend fun getPlaylist(id: String): Playlist? = db.playlists().byId(id)?.toModel()
 
@@ -161,7 +327,7 @@ class PlaylistRepositoryImpl @Inject constructor(
                     pk = prev.pk,
                     favorite = prev.favorite,
                     hidden = prev.hidden,
-                    userOrder = prev.userOrder,
+                    userOrder = ch.userOrder,
                     locked = prev.locked,
                     epgId = ch.epgId.ifBlank { prev.epgId },
                 )
@@ -182,7 +348,7 @@ class PlaylistRepositoryImpl @Inject constructor(
                     localRating = p?.localRating ?: 0f,
                 )
             }
-            db.vod().syncVod(playlist.id, mergedVod)
+            db.vod().replacePlaylistVod(playlist.id, mergedVod)
         }
         if (episodes.isNotEmpty()) {
             episodes.groupBy { it.seriesId }.forEach { (sid, eps) ->
@@ -223,6 +389,7 @@ class PlaylistRepositoryImpl @Inject constructor(
             listOf(
                 VodEntity.from(item).copy(
                     pk = existing?.pk ?: 0,
+                    genresCsv = existing?.genresCsv ?: item.genresCsv,
                     watchlist = existing?.watchlist ?: item.watchlist,
                     localRating = existing?.localRating ?: item.localRating,
                 ),
@@ -254,8 +421,9 @@ class PlaylistRepositoryImpl @Inject constructor(
         vault.getPassword(playlist.id).ifBlank { playlist.passwordEnc }
 
     private fun ftsQuery(raw: String): String {
-        val cleaned = raw.trim().replace("\"", "").replace("'", "")
-        if (cleaned.isBlank()) return ""
-        return cleaned.split(Regex("\\s+")).joinToString(" ") { "$it*" }
+        return Regex("[\\p{L}\\p{N}]+").findAll(raw.trim())
+            .map { it.value }
+            .take(8)
+            .joinToString(" ") { "$it*" }
     }
 }

@@ -3,6 +3,7 @@ package com.nova.iptv.data.recordings
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -17,12 +18,15 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import timber.log.Timber
 import java.io.OutputStream
+import java.util.Collections
 import javax.inject.Inject
 
 /**
@@ -39,58 +43,156 @@ class RecordingService : Service() {
 
     private val scope = CoroutineScope(Dispatchers.IO)
     private var job: Job? = null
+    private val cancelledIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val stoppedIds = Collections.synchronizedSet(mutableSetOf<String>())
+    @Volatile private var activeId: String? = null
+    @Volatile private var activeCall: okhttp3.Call? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val id = intent?.getStringExtra("id") ?: return START_NOT_STICKY
+        if (intent?.action == ACTION_STOP) {
+            val id = intent.getStringExtra(EXTRA_ID)
+            if (id != null) stopAndKeepRecording(id)
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_CANCEL) {
+            val id = intent.getStringExtra(EXTRA_ID)
+            if (id != null) cancelRecording(id)
+            return START_NOT_STICKY
+        }
+        val id = intent?.getStringExtra(EXTRA_ID) ?: return START_NOT_STICKY
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(99, notif("Recording…"), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         } else {
             startForeground(99, notif("Recording…"))
         }
-        job?.cancel()
-        job = scope.launch { record(id) }
+        cancelledIds.remove(id)
+        stoppedIds.remove(id)
+        val previous = job
+        job = scope.launch {
+            previous?.cancelAndJoin()
+            record(id)
+        }
         return START_NOT_STICKY
     }
 
+    private fun cancelRecording(id: String) {
+        cancelledIds.add(id)
+        if (activeId == id) {
+            activeCall?.cancel()
+            job?.cancel()
+            job = null
+        }
+        stopSelf()
+    }
+
+    private fun stopAndKeepRecording(id: String) {
+        stoppedIds.add(id)
+        if (activeId == id) {
+            activeCall?.cancel()
+            job?.cancel()
+        } else {
+            stopSelf()
+        }
+    }
+
     private suspend fun record(id: String) {
-        val rec = repo.get(id) ?: return stopSelf()
+        activeId = id
+        val rec = repo.get(id) ?: run {
+            if (activeId == id) activeId = null
+            return stopSelf()
+        }
         val channel = playlists.getChannel(rec.channelId)
         val url = channel?.streamUrl.orEmpty()
         if (url.isBlank()) {
-            repo.update(rec.copy(status = RecordingStatus.FAILED))
+            updateIfPresent(rec.copy(status = RecordingStatus.FAILED))
+            if (activeId == id) activeId = null
             stopSelf()
             return
         }
         val tree = settings.settings.value.recTreeUri
         val outUri = openOutput(tree, rec.title)
         if (outUri == null) {
-            repo.update(rec.copy(status = RecordingStatus.FAILED))
+            updateIfPresent(rec.copy(status = RecordingStatus.FAILED))
+            if (activeId == id) activeId = null
             stopSelf()
             return
         }
         var bytes = 0L
-        runCatching {
-            val req = Request.Builder().url(url).build()
-            client.newCall(req).execute().use { resp ->
-                val body = resp.body ?: error("empty")
-                contentResolver.openOutputStream(outUri)?.use { os: OutputStream ->
-                    val deadline = rec.endMs
+        val outputUri = outUri.toString()
+        try {
+            repo.updateProgress(id, RecordingStatus.RECORDING, outputUri, 0L)
+            val deadline = rec.endMs
+            val output = contentResolver.openOutputStream(outUri) ?: error("cannot open recording output")
+            output.use { os: OutputStream ->
+                var directUrl: okhttp3.HttpUrl? = null
+                val sourceRequest = Request.Builder().url(url).build()
+                executeWithActive(sourceRequest) { resp ->
+                    if (!resp.isSuccessful) error("stream HTTP ${resp.code}")
+                    val body = resp.body ?: error("empty")
                     val isHls = url.contains(".m3u8", true) ||
                         resp.header("Content-Type").orEmpty().contains("mpegurl", true)
                     if (isHls) {
-                        bytes += recordHls(resp.request.url, body.string(), os, deadline)
+                        bytes = recordHls(resp.request.url, body.string(), os, deadline) { current ->
+                            bytes = current
+                            repo.updateProgress(id, RecordingStatus.RECORDING, outputUri, current)
+                        }
                     } else {
-                        bytes += copyBody(body.byteStream(), os, deadline)
+                        directUrl = sourceRequest.url
+                        val base = bytes
+                        val copied = copyBody(body.byteStream(), os, deadline) { current ->
+                            bytes = base + current
+                            repo.updateProgress(id, RecordingStatus.RECORDING, outputUri, bytes)
+                        }
+                        bytes = maxOf(bytes, base + copied)
                     }
-                    os.flush()
                 }
+
+                // Many IPTV providers rotate or close long-running transport
+                // stream sockets. EOF is not completion for live TV: reconnect
+                // and append until the programme deadline or explicit cancel.
+                while (directUrl != null && System.currentTimeMillis() < deadline && !cancelledIds.contains(id)) {
+                    delay(DIRECT_RECONNECT_MS)
+                    try {
+                        executeWithActive(Request.Builder().url(directUrl!!).build()) { resp ->
+                            if (!resp.isSuccessful) error("stream reconnect HTTP ${resp.code}")
+                            val body = resp.body ?: error("empty reconnect body")
+                            val base = bytes
+                            val copied = copyBody(body.byteStream(), os, deadline) { current ->
+                                bytes = base + current
+                                repo.updateProgress(id, RecordingStatus.RECORDING, outputUri, bytes)
+                            }
+                            bytes = maxOf(bytes, base + copied)
+                        }
+                    } catch (t: kotlinx.coroutines.CancellationException) {
+                        throw t
+                    } catch (t: Throwable) {
+                        Timber.w(t, "recording stream interrupted; retrying id=%s", id)
+                        repo.updateProgress(id, RecordingStatus.RECORDING, outputUri, bytes)
+                    }
+                }
+                if (!cancelledIds.contains(id)) {
+                    repo.updateProgress(id, RecordingStatus.RECORDING, outputUri, bytes)
+                }
+                os.flush()
             }
-            repo.update(rec.copy(status = RecordingStatus.COMPLETED, fileUri = outUri.toString(), bytes = bytes))
-        }.onFailure {
-            Timber.e(it, "record failed")
-            repo.update(rec.copy(status = RecordingStatus.FAILED, bytes = bytes))
+            if (!cancelledIds.remove(id)) {
+                stoppedIds.remove(id)
+                updateIfPresent(rec.copy(status = RecordingStatus.COMPLETED, fileUri = outputUri, bytes = bytes))
+            }
+        } catch (t: Throwable) {
+            if (stoppedIds.remove(id)) {
+                updateIfPresent(rec.copy(status = RecordingStatus.COMPLETED, fileUri = outputUri, bytes = bytes))
+            } else if (!cancelledIds.remove(id)) {
+                Timber.e(t, "record failed")
+                updateIfPresent(rec.copy(status = RecordingStatus.FAILED, fileUri = outputUri, bytes = bytes))
+            }
+        } finally {
+            if (activeId == id) {
+                activeId = null
+                job = null
+            }
         }
         stopSelf()
     }
@@ -100,6 +202,7 @@ class RecordingService : Service() {
         initialText: String,
         output: OutputStream,
         deadline: Long,
+        onProgress: suspend (Long) -> Unit,
     ): Long {
         var mediaUrl = initialUrl
         var playlist = initialText
@@ -122,11 +225,11 @@ class RecordingService : Service() {
             lines.filter { it.startsWith("#EXT-X-MAP") }.forEach { line ->
                 val uri = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.get(1) ?: return@forEach
                 val resolved = mediaUrl.resolve(uri) ?: return@forEach
-                if (seen.add(resolved.toString())) written += download(resolved, output, deadline)
+                if (seen.add(resolved.toString())) written += download(resolved, output, deadline, written, onProgress)
             }
             lines.filter { !it.startsWith('#') }.forEach { uri ->
                 val resolved = mediaUrl.resolve(uri) ?: return@forEach
-                if (seen.add(resolved.toString())) written += download(resolved, output, deadline)
+                if (seen.add(resolved.toString())) written += download(resolved, output, deadline, written, onProgress)
             }
             if (lines.any { it == "#EXT-X-ENDLIST" }) break
             val targetSeconds = lines.firstNotNullOfOrNull {
@@ -138,22 +241,37 @@ class RecordingService : Service() {
         return written
     }
 
-    private fun fetchText(url: okhttp3.HttpUrl): String {
-        return client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+    private suspend fun fetchText(url: okhttp3.HttpUrl): String {
+        return executeWithActive(Request.Builder().url(url).build()) { response ->
             if (!response.isSuccessful) error("HLS playlist HTTP ${response.code}")
             response.body?.string() ?: error("empty HLS playlist")
         }
     }
 
-    private fun download(url: okhttp3.HttpUrl, output: OutputStream, deadline: Long): Long {
-        return client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+    private suspend fun download(
+        url: okhttp3.HttpUrl,
+        output: OutputStream,
+        deadline: Long,
+        baseBytes: Long,
+        onProgress: suspend (Long) -> Unit,
+    ): Long {
+        return executeWithActive(Request.Builder().url(url).build()) { response ->
             if (!response.isSuccessful) error("HLS segment HTTP ${response.code}")
-            copyBody(response.body?.byteStream() ?: error("empty HLS segment"), output, deadline)
+            copyBody(response.body?.byteStream() ?: error("empty HLS segment"), output, deadline) { segmentBytes ->
+                onProgress(baseBytes + segmentBytes)
+            }
         }
     }
 
-    private fun copyBody(input: java.io.InputStream, output: OutputStream, deadline: Long): Long {
+    private suspend fun copyBody(
+        input: java.io.InputStream,
+        output: OutputStream,
+        deadline: Long,
+        onProgress: suspend (Long) -> Unit,
+    ): Long {
         var written = 0L
+        var lastProgressAt = 0L
+        var lastProgressBytes = 0L
         input.use { source ->
             val buffer = ByteArray(32 * 1024)
             while (System.currentTimeMillis() < deadline) {
@@ -161,9 +279,30 @@ class RecordingService : Service() {
                 if (count <= 0) break
                 output.write(buffer, 0, count)
                 written += count
+                val now = System.currentTimeMillis()
+                if (written - lastProgressBytes >= PROGRESS_BYTES || now - lastProgressAt >= PROGRESS_MS) {
+                    onProgress(written)
+                    lastProgressAt = now
+                    lastProgressBytes = written
+                }
             }
         }
+        onProgress(written)
         return written
+    }
+
+    private suspend fun <T> executeWithActive(request: Request, block: suspend (Response) -> T): T {
+        val call = client.newCall(request)
+        activeCall = call
+        return try {
+            call.execute().use { response -> block(response) }
+        } finally {
+            if (activeCall === call) activeCall = null
+        }
+    }
+
+    private suspend fun updateIfPresent(rec: com.nova.iptv.domain.model.Recording) {
+        if (repo.get(rec.id) != null) repo.update(rec)
     }
 
     private fun openOutput(tree: String, title: String): Uri? {
@@ -195,5 +334,24 @@ class RecordingService : Service() {
 
     companion object {
         private const val CH = "nova_rec"
+        private const val EXTRA_ID = "id"
+        private const val ACTION_CANCEL = "com.nova.iptv.action.CANCEL_RECORDING"
+        private const val ACTION_STOP = "com.nova.iptv.action.STOP_RECORDING"
+        private const val PROGRESS_BYTES = 2L * 1024L * 1024L
+        private const val PROGRESS_MS = 5_000L
+        private const val DIRECT_RECONNECT_MS = 1_000L
+
+        fun startIntent(context: Context, id: String): Intent =
+            Intent(context, RecordingService::class.java).putExtra(EXTRA_ID, id)
+
+        fun cancelIntent(context: Context, id: String): Intent =
+            Intent(context, RecordingService::class.java)
+                .setAction(ACTION_CANCEL)
+                .putExtra(EXTRA_ID, id)
+
+        fun stopIntent(context: Context, id: String): Intent =
+            Intent(context, RecordingService::class.java)
+                .setAction(ACTION_STOP)
+                .putExtra(EXTRA_ID, id)
     }
 }

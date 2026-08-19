@@ -12,6 +12,7 @@ import com.nova.iptv.domain.model.PlaylistType
 import com.nova.iptv.domain.model.Program
 import com.nova.iptv.domain.model.SearchHit
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -65,8 +66,15 @@ class MatchEpgUseCase @Inject constructor(
 class ZapChannelUseCase @Inject constructor(
     private val playlists: PlaylistRepository,
 ) {
-    suspend fun next(playlistId: String, currentId: String, delta: Int): Channel? {
-        val list = playlists.snapshotChannels(playlistId).filter { !it.hidden }
+    suspend fun next(playlistId: String, currentId: String, delta: Int, groupId: String? = null): Channel? {
+        val all = playlists.snapshotChannels(playlistId)
+        val scoped = when {
+            groupId == "favorites" -> playlists.favorites(playlistId).first()
+            groupId == "recent" -> playlists.recentChannels(playlistId).first()
+            groupId?.startsWith("g:") == true -> all.filter { it.groupName == groupId.removePrefix("g:") }
+            else -> all
+        }
+        val list = scoped.filter { !it.hidden }
         if (list.isEmpty()) return null
         val idx = list.indexOfFirst { it.id == currentId }.let { if (it < 0) 0 else it }
         val next = (idx + delta).mod(list.size)

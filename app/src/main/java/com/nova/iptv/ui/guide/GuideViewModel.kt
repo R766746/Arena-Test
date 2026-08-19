@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -33,6 +34,7 @@ data class GuideUiState(
     val settings: AppSettings = AppSettings(),
     val selected: Program? = null,
     val selectedChannel: Channel? = null,
+    val loading: Boolean = true,
 )
 
 @HiltViewModel
@@ -50,12 +52,22 @@ class GuideViewModel @Inject constructor(
     private val selected = MutableStateFlow<Program?>(null)
     private val selectedCh = MutableStateFlow<Channel?>(null)
     private val rows = MutableStateFlow<List<GuideRow>>(emptyList())
+    private val loading = MutableStateFlow(true)
 
     val state: StateFlow<GuideUiState> = combine(
         combine(now, windowStart, settingsRepo.settings) { n, w, s -> Triple(n, w, s) },
-        combine(selected, selectedCh, rows) { sel, ch, r -> Triple(sel, ch, r) },
+        combine(selected, selectedCh, rows, loading) { sel, ch, r, busy -> listOf(sel, ch, r, busy) },
     ) { a, b ->
-        GuideUiState(a.first, a.second, a.third.epgHours, b.third, a.third, b.first, b.second)
+        GuideUiState(
+            now = a.first,
+            windowStart = a.second,
+            hours = a.third.epgHours,
+            rows = b[2] as List<GuideRow>,
+            settings = a.third,
+            selected = b[0] as Program?,
+            selectedChannel = b[1] as Channel?,
+            loading = b[3] as Boolean,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GuideUiState())
 
     init {
@@ -69,9 +81,13 @@ class GuideViewModel @Inject constructor(
     }
 
     private suspend fun reload() {
+        loading.value = true
         val s = settingsRepo.settings.value
-        val pid = s.lastPlaylistId
-        val channels = playlists.snapshotChannels(pid).filter { !it.hidden }
+        val pid = s.lastPlaylistId.takeIf { playlists.getPlaylist(it) != null }
+            ?: playlists.playlists().first().firstOrNull()?.id.orEmpty()
+        // Keep the legacy all-channel guide bounded. Category-level now/next on
+        // Live TV remains the primary guide and loads only focused rows.
+        val channels = playlists.snapshotChannelsLimited(pid, 160).filter { !it.hidden }
         val from = windowStart.value
         val to = from + s.epgHours * 3600_000L
         val out = ArrayList<GuideRow>(channels.size)
@@ -81,6 +97,7 @@ class GuideViewModel @Inject constructor(
             out += GuideRow(ch, programs, programs.firstOrNull { it.isNow(now.value) })
         }
         rows.value = out
+        loading.value = false
     }
 
     fun shiftWindow(deltaHours: Int) {

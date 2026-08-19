@@ -1,5 +1,7 @@
 package com.nova.iptv.domain.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Domain models for NovaIptv. These are UI/use-case facing copies of Room rows.
  */
@@ -7,11 +9,18 @@ enum class PlaylistType { M3U, XTREAM, FILE }
 
 enum class VodKind { MOVIE, SERIES }
 
+enum class CatalogSort { PROVIDER, TITLE, NEWEST }
+
+@Immutable
+data class CatalogGroup(val name: String, val count: Int)
+
 enum class RecordingStatus { SCHEDULED, RECORDING, COMPLETED, FAILED }
 
 enum class WatchKind { LIVE, MOVIE, SERIES, CATCHUP, RECORDING }
 
 enum class ListStyle { LIST, COMPACT, LOGOS }
+
+enum class PosterSize { SMALL, MEDIUM, LARGE }
 
 enum class ThemeName { MIDNIGHT, DARK, CINEMA, LIGHT }
 
@@ -27,6 +36,7 @@ enum class EpgRowHeight { COMPACT, NORMAL, TALL }
 
 enum class HomeCategory { LIVE, MOVIES, SERIES, GUIDE, RECORDINGS, MULTIVIEW, SEARCH, SETTINGS }
 
+@Immutable
 data class Playlist(
     val id: String,
     val name: String,
@@ -48,6 +58,7 @@ data class Playlist(
     }
 }
 
+@Immutable
 data class Channel(
     val id: String,
     val playlistId: String,
@@ -72,6 +83,7 @@ data class Channel(
     val xtreamStreamId: String = "",
 )
 
+@Immutable
 data class Program(
     val id: String,
     val channelId: String,
@@ -91,6 +103,7 @@ data class Program(
     fun isPast(now: Long): Boolean = endMs <= now
 }
 
+@Immutable
 data class NowNext(
     val now: Program?,
     val next: Program?,
@@ -120,6 +133,7 @@ data class VodItem(
     val castCsv: String get() = cast.joinToString(",")
 }
 
+@Immutable
 data class Episode(
     val id: String,
     val seriesId: String,
@@ -132,6 +146,7 @@ data class Episode(
     val progress: Float = 0f,
 )
 
+@Immutable
 data class Recording(
     val id: String,
     val title: String,
@@ -144,6 +159,7 @@ data class Recording(
     val bytes: Long = 0L,
 )
 
+@Immutable
 data class WatchHistory(
     val id: String,
     val kind: WatchKind,
@@ -159,6 +175,7 @@ data class WatchHistory(
         get() = if (durationMs <= 0L) 0f else (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
 }
 
+@Immutable
 data class EpgSource(
     val id: String,
     val playlistId: String,
@@ -168,6 +185,7 @@ data class EpgSource(
     val name: String = "",
 )
 
+@Immutable
 data class SearchHit(
     val kind: String,
     val id: String,
@@ -177,6 +195,7 @@ data class SearchHit(
     val logoColor: Int = 0,
 )
 
+@Immutable
 data class ImportProgress(
     val stage: Stage,
     val downloadedKb: Int = 0,
@@ -202,4 +221,11 @@ data class DiagnosticsSnapshot(
     val lowRam: Boolean,
     val previewActive: Boolean,
     val multiViewActive: Int,
+    val channelCount: Int = 0,
+    val movieCount: Int = 0,
+    val seriesCount: Int = 0,
+    val databaseMb: Long = 0,
+    val imageCacheMb: Long = 0,
+    val physicalRamMb: Long = 0,
+    val heapClassMb: Int = 0,
 )

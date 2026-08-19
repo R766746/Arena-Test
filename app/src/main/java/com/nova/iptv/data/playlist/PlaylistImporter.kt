@@ -28,6 +28,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.buffer
@@ -48,6 +51,13 @@ class PlaylistImporter @Inject constructor(
     private val settings: SettingsRepository,
 ) {
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _syncProgress = MutableStateFlow<ImportProgress?>(null)
+    val syncProgress: StateFlow<ImportProgress?> = _syncProgress.asStateFlow()
+
+    private fun tracked(callback: (ImportProgress) -> Unit): (ImportProgress) -> Unit = { progress ->
+        _syncProgress.value = progress
+        callback(progress)
+    }
 
     suspend fun importRemoteM3u(
         name: String,
@@ -57,6 +67,7 @@ class PlaylistImporter @Inject constructor(
         existingId: String? = null,
         onProgress: (ImportProgress) -> Unit,
     ): Result<Playlist> = withContext(Dispatchers.IO) {
+        val onProgress = tracked(onProgress)
         val id = existingId ?: newId()
         runCatching {
             onProgress(ImportProgress(ImportProgress.Stage.CONNECTING))
@@ -88,7 +99,10 @@ class PlaylistImporter @Inject constructor(
                     onProgress,
                 )
             }
-        }.recoverCatching { mapError(it) }
+        }.recoverCatching {
+            onProgress(ImportProgress(ImportProgress.Stage.ERROR, message = it.message.orEmpty()))
+            mapError(it)
+        }
     }
 
     suspend fun importLocalFile(
@@ -97,6 +111,7 @@ class PlaylistImporter @Inject constructor(
         existingId: String? = null,
         onProgress: (ImportProgress) -> Unit,
     ): Result<Playlist> = withContext(Dispatchers.IO) {
+        val onProgress = tracked(onProgress)
         val id = existingId ?: newId()
         runCatching {
             onProgress(ImportProgress(ImportProgress.Stage.CONNECTING))
@@ -121,7 +136,10 @@ class PlaylistImporter @Inject constructor(
                     onProgress,
                 )
             } ?: error("Could not open file")
-        }.recoverCatching { mapError(it) }
+        }.recoverCatching {
+            onProgress(ImportProgress(ImportProgress.Stage.ERROR, message = it.message.orEmpty()))
+            mapError(it)
+        }
     }
 
     suspend fun importXtream(
@@ -132,6 +150,7 @@ class PlaylistImporter @Inject constructor(
         existingId: String? = null,
         onProgress: (ImportProgress) -> Unit,
     ): Result<Playlist> = withContext(Dispatchers.IO) {
+        val onProgress = tracked(onProgress)
         val normalizedPortal = portal.trim().trimEnd('/')
         val matching = if (existingId == null) {
             repo.playlists().first().filter {
@@ -168,6 +187,9 @@ class PlaylistImporter @Inject constructor(
             val liveMap = liveCats.associate { it.categoryId.orEmpty() to it.categoryName.orEmpty() }
             val vodMap = vodCats.associate { it.categoryId.orEmpty() to it.categoryName.orEmpty() }
             val serMap = seriesCats.associate { it.categoryId.orEmpty() to it.categoryName.orEmpty() }
+            val liveOrder = liveCats.mapIndexed { index, category -> category.categoryId.orEmpty() to index }.toMap()
+            val vodOrder = vodCats.mapIndexed { index, category -> category.categoryId.orEmpty() to index }.toMap()
+            val seriesOrder = seriesCats.mapIndexed { index, category -> category.categoryId.orEmpty() to index }.toMap()
 
             val live = streamResults.first.getOrElse {
                 Timber.w(it, "live streams failed, trying m3u_plus fallback")
@@ -209,10 +231,11 @@ class PlaylistImporter @Inject constructor(
                     epgId = s.epgChannelId.orEmpty(),
                     catchup = (s.tvArchive ?: 0) > 0,
                     catchupDays = s.tvArchiveDuration ?: 0,
+                    userOrder = (liveOrder[s.categoryId.orEmpty()] ?: liveCats.size) * 1_000_000 + idx,
                     xtreamStreamId = sid,
                 )
             }
-            val vodItems = vods.map { v ->
+            val vodItems = vods.sortedBy { vodOrder[it.categoryId.orEmpty()] ?: vodCats.size }.map { v ->
                 val sid = v.streamId?.toString().orEmpty()
                 val title = v.name.orEmpty()
                 val ext = v.container?.ifBlank { "mp4" } ?: "mp4"
@@ -231,7 +254,7 @@ class PlaylistImporter @Inject constructor(
                     streamUrl = "$root/movie/$username/$password/$sid.$ext",
                     xtreamId = sid,
                 )
-            } + series.map { s ->
+            } + series.sortedBy { seriesOrder[it.categoryId.orEmpty()] ?: seriesCats.size }.map { s ->
                 val sid = s.seriesId?.toString().orEmpty()
                 VodItem(
                     id = "$id:series:$sid",
@@ -257,6 +280,10 @@ class PlaylistImporter @Inject constructor(
                     url = base,
                     username = username,
                     passwordEnc = "",
+                    // Xtream-compatible servers normally expose the complete
+                    // guide in one request. Persisting it also lets WorkManager
+                    // refresh EPG later without issuing a request per channel.
+                    epgUrl = "$base/xmltv.php?username=${Uri.encode(username.trim())}&password=${Uri.encode(password.trim())}",
                     userAgent = Playlist.DEFAULT_UA,
                 ),
                 channels,
@@ -265,14 +292,11 @@ class PlaylistImporter @Inject constructor(
                 password,
             ).also {
                 matching.drop(1).forEach { duplicate -> repo.deletePlaylist(duplicate.id) }
-                if (settings.settings.value.updateEpgOnPlaylistChange) {
-                    backgroundScope.launch {
-                        runCatching { ingestXtreamEpg(api, username, password, channels) }
-                            .onFailure { Timber.w(it, "Xtream EPG background ingest failed") }
-                    }
-                }
             }
-        }.recoverCatching { mapError(it) }
+        }.recoverCatching {
+            onProgress(ImportProgress(ImportProgress.Stage.ERROR, message = it.message.orEmpty()))
+            mapError(it)
+        }
     }
 
     private suspend fun importM3uPlus(
@@ -332,10 +356,23 @@ class PlaylistImporter @Inject constructor(
         onProgress(ImportProgress(ImportProgress.Stage.SAVING, parsed = channels.size, total = channels.size))
         val unique = channels.distinctBy { it.streamUrl + "|" + it.name }
         repo.saveImported(playlist, unique, vod, episodes, password)
-        if (playlist.epgUrl.isNotBlank() && settings.settings.value.updateEpgOnPlaylistChange) {
-            epg.ingestUrl(playlist.id, playlist.epgUrl, settings.settings.value.epgTimeShiftHours)
-        }
         onProgress(ImportProgress(ImportProgress.Stage.DONE, parsed = unique.size, total = unique.size))
+        // The saved catalog is usable immediately. XMLTV parsing can be much
+        // slower than the channel import and must not hold the UI on "Saving".
+        if (playlist.epgUrl.isNotBlank() && settings.settings.value.updateEpgOnPlaylistChange) {
+            val shiftHours = settings.settings.value.epgTimeShiftHours
+            backgroundScope.launch {
+                val xmltv = epg.ingestUrl(playlist.id, playlist.epgUrl, shiftHours)
+                xmltv.onFailure { failure ->
+                    Timber.w(failure, "XMLTV background ingest failed")
+                    if (playlist.type == PlaylistType.XTREAM && password.isNotBlank()) {
+                        val api = "${playlist.url.trimEnd('/')}/player_api.php"
+                        runCatching { ingestXtreamEpg(api, playlist.username, password, unique) }
+                            .onFailure { Timber.w(it, "Xtream short EPG fallback failed") }
+                    }
+                }
+            }
+        }
         return playlist
     }
 

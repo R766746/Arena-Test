@@ -89,10 +89,13 @@
     <string name="player_external">Open external player</string>
     <string name="player_error">Playback failed</string>
     <string name="player_no_timeshift">Provider does not support timeshift</string>
+    <string name="player_start_over">Start over</string>
     <string name="overlay_favorite">Favorite</string>
     <string name="overlay_multiview">Multi-view</string>
     <string name="overlay_guide">TV Guide</string>
     <string name="overlay_record">Record</string>
+    <string name="overlay_stop_recording">Stop recording</string>
+    <string name="player_recording_badge">● REC</string>
     <string name="overlay_audio">Audio</string>
     <string name="overlay_subtitles">Subtitles</string>
     <string name="overlay_aspect">Aspect</string>
@@ -144,6 +147,8 @@
     <string name="playlists_add">Add playlist</string>
     <string name="playlists_update_now">Update now</string>
     <string name="playlists_delete">Delete</string>
+    <string name="playlist_delete_title">Delete playlist?</string>
+    <string name="playlist_delete_body">Remove %1$s and all of its saved channels, movies, series, and guide data?</string>
     <string name="playlists_user_agent">User-Agent</string>
     <string name="playlists_epg_sources">Assigned EPG sources</string>
     <string name="playlists_interval">Auto-update interval (hours)</string>
@@ -165,6 +170,9 @@
     <string name="accent_color">Accent</string>
     <string name="appearance_theme">Theme</string>
     <string name="font_scale">Text size</string>
+    <string name="poster_size">Poster size</string>
+    <string name="search_posters_hint">Search movies or series…</string>
+    <string name="sort_posters">Sort: %1$s</string>
     <string name="list_style">List style</string>
     <string name="logo_size">Logo size</string>
     <string name="show_numbers">Channel numbers</string>
@@ -202,9 +210,23 @@
     <string name="rec_no_space">Not enough free space (need ~1.5× estimated size).</string>
     <string name="rec_scheduled">Scheduled</string>
     <string name="rec_recording">Recording</string>
+    <string name="recording_delete_title">Delete recording?</string>
+    <string name="recording_delete_body">Remove %1$s? A completed recording file cannot be recovered.</string>
     <string name="rec_completed">Completed</string>
     <string name="rec_failed">Failed</string>
     <string name="rec_pick_folder">Choose folder</string>
+    <string name="rec_use_app_folder">Use app storage</string>
+    <string name="rec_app_folder_selected">Current location: app Movies folder</string>
+    <string name="rec_external_folder_selected">Current location: selected external folder</string>
+    <string name="rec_folder_picker_unavailable">This TV has no compatible folder picker. Recordings use the app Movies folder.</string>
+    <string name="rec_cancel">Cancel</string>
+    <string name="recording_cancel_title">Cancel recording?</string>
+    <string name="recording_cancel_body">Stop and remove %1$s?</string>
+    <string name="recording_stop_title">Stop recording?</string>
+    <string name="recording_stop_body">Stop %1$s and keep the recorded content?</string>
+    <string name="recording_stop_action">Stop and save</string>
+    <string name="rec_starts_in">Starts in %1$s</string>
+    <string name="rec_elapsed">%1$s / %2$s</string>
 
     <string name="startup_mode">Startup screen</string>
     <string name="backup_export">Backup to file</string>
@@ -228,6 +250,25 @@
 
     <string name="multiview_lowram">This device is low on RAM. 9-up is disabled; using 4 tiles.</string>
     <string name="multiview_pick">Pick a channel</string>
+    <string name="multiview_pick_all">Choose a live channel</string>
+    <string name="multiview_picker_hint">All channels · OK to select · Back to cancel</string>
+    <string name="multiview_search_hint">Search 10,000+ channels… Press OK to type</string>
+    <string name="multiview_categories">LIVE TV CATEGORIES</string>
+    <string name="all_channels">All Channels</string>
+    <string name="clear_search">Clear search</string>
+    <string name="multiview_two_view">Two-channel view</string>
+    <string name="multiview_four_view">Four-channel view</string>
+    <string name="multiview_decoder_fallback">This TV could not start four hardware decoders. Switched safely to two-channel view.</string>
+    <string name="multiview_empty_tile">Press OK to choose a channel</string>
+    <string name="multiview_loading">Loading channel…</string>
+    <string name="multiview_stream_error">Channel unavailable · press OK for options</string>
+    <string name="multiview_audio_active">AUDIO</string>
+    <string name="multiview_tile_actions">TILE ACTIONS</string>
+    <string name="multiview_fullscreen">Full screen</string>
+    <string name="multiview_replace">Replace channel</string>
+    <string name="multiview_retry">Retry stream</string>
+    <string name="multiview_swap">Swap with adjacent tile</string>
+    <string name="multiview_remove">Remove from tile</string>
     <string name="layout_2">2-up</string>
     <string name="layout_4">4-up</string>
     <string name="layout_9">9-up</string>
@@ -240,7 +281,7 @@
     <string name="voice_unavailable">Voice search is not available on this device.</string>
 
     <string name="exit_title">Leave NOVA?</string>
-    <string name="exit_body">Press Back again to exit, or OK to stay.</string>
+    <string name="exit_body">Choose Exit to close NOVA, or press Back to stay.</string>
     <string name="exit_confirm">Exit</string>
     <string name="exit_stay">Stay</string>
 

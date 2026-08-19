@@ -9,6 +9,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 object Routes {
     const val Splash = "splash"
     const val Home = "home"
+    const val HomeFavorites = "home/favorites"
     const val Guide = "guide"
     const val Player = "player/{targetJson}"
     const val Movies = "movies"
@@ -40,6 +41,7 @@ data class PlayTarget(
     val url: String? = null,
     val subtitle: String? = null,
     val number: Int? = null,
+    val groupId: String? = null,
 ) {
     val watchKind: WatchKind
         get() = runCatching { WatchKind.valueOf(kind.uppercase()) }.getOrDefault(WatchKind.LIVE)
@@ -52,8 +54,8 @@ data class PlayTarget(
                 ?: PlayTarget(kind = "LIVE", id = raw)
         }
 
-        fun live(channelId: String, title: String? = null, number: Int? = null, url: String? = null) =
-            PlayTarget(kind = "LIVE", id = channelId, channelId = channelId, title = title, number = number, url = url)
+        fun live(channelId: String, title: String? = null, number: Int? = null, url: String? = null, groupId: String? = null) =
+            PlayTarget(kind = "LIVE", id = channelId, channelId = channelId, title = title, number = number, url = url, groupId = groupId)
 
         fun vod(id: String, title: String? = null, url: String? = null) =
             PlayTarget(kind = "MOVIE", id = id, title = title, url = url)

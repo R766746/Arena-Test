@@ -7,11 +7,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -22,11 +25,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -41,6 +47,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.tv.material3.Text
+import androidx.tv.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import com.nova.iptv.R
 import com.nova.iptv.data.local.SettingsRepository
 import com.nova.iptv.data.playlist.PlaylistRepository
@@ -51,12 +60,14 @@ import com.nova.iptv.nav.TvLazyColumn
 import com.nova.iptv.ui.components.EmptyState
 import com.nova.iptv.ui.components.FocusButton
 import com.nova.iptv.ui.components.NovaTopBar
+import com.nova.iptv.nav.dpadClickable
 import com.nova.iptv.ui.theme.LocalNovaPalette
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -70,7 +81,7 @@ class SearchViewModel @Inject constructor(
 ) : ViewModel() {
     val query = MutableStateFlow("")
     val clock24h = settings.settings
-    val results = query.debounce(200).flatMapLatest { q ->
+    val results = query.debounce(120).distinctUntilChanged().flatMapLatest { q ->
         if (q.isBlank()) flowOf(emptyList())
         else search.query(settings.settings.value.lastPlaylistId, q)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(4_000), emptyList())
@@ -85,7 +96,7 @@ fun SearchRoute(
 ) {
     val hits by vm.results.collectAsStateWithLifecycle()
     val settings by vm.clock24h.collectAsStateWithLifecycle()
-    var text by remember { mutableStateOf("") }
+    val text by vm.query.collectAsStateWithLifecycle()
     val colors = LocalNovaPalette.current
     val focus = remember { FocusRequester() }
     val ctx = LocalContext.current
@@ -93,15 +104,9 @@ fun SearchRoute(
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
         val spoken = res.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!spoken.isNullOrBlank()) {
-            text = spoken
             vm.query.value = spoken
         }
     }
-    LaunchedEffect(Unit) {
-        focus.requestFocus()
-        keyboard?.show()
-    }
-
     Column(
         Modifier
             .fillMaxSize()
@@ -119,7 +124,6 @@ fun SearchRoute(
         BasicTextField(
             value = text,
             onValueChange = {
-                text = it
                 vm.query.value = it
             },
             modifier = Modifier
@@ -127,14 +131,36 @@ fun SearchRoute(
                 .fillMaxWidth()
                 .background(colors.surface2, RoundedCornerShape(8.dp))
                 .padding(14.dp)
-                .focusRequester(focus),
+                .focusRequester(focus)
+                .onPreviewKeyEvent { event ->
+                    val code = event.nativeKeyEvent.keyCode
+                    val activate = code == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        code == KeyEvent.KEYCODE_ENTER ||
+                        code == KeyEvent.KEYCODE_NUMPAD_ENTER
+                    if (activate && event.type == KeyEventType.KeyUp) {
+                        keyboard?.show()
+                        true
+                    } else false
+                },
             textStyle = TextStyle(color = colors.onBackground, fontSize = 18.sp),
             cursorBrush = SolidColor(colors.accent),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Search),
             singleLine = true,
             decorationBox = { inner ->
-                if (text.isEmpty()) Text(stringResource(R.string.search_hint), color = colors.muted, fontSize = 16.sp)
-                inner()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) {
+                        if (text.isEmpty()) Text(stringResource(R.string.search_hint), color = colors.muted, fontSize = 16.sp)
+                        inner()
+                    }
+                    if (text.isNotEmpty()) {
+                        Box(
+                            Modifier.size(36.dp).dpadClickable { vm.query.value = "" },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear search", tint = colors.onBackground)
+                        }
+                    }
+                }
             },
         )
         when {
@@ -144,8 +170,8 @@ fun SearchRoute(
                 TvLazyColumn(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
                     val groups = hits.groupBy { it.kind }
                     groups.forEach { (kind, list) ->
-                        item { Text(kind.uppercase(), color = colors.muted, fontSize = 11.sp, letterSpacing = 1.4.sp, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)) }
-                        items(list, key = { it.kind + it.id }) { hit ->
+                        item(contentType = "search-header") { Text(kind.uppercase(), color = colors.muted, fontSize = 11.sp, letterSpacing = 1.4.sp, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)) }
+                        items(list, key = { it.kind + it.id }, contentType = { "search-${it.kind}" }) { hit ->
                             FocusButton(
                                 label = "${hit.title}  ${hit.subtitle}",
                                 onClick = {

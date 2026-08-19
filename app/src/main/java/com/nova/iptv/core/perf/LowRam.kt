@@ -27,7 +27,9 @@ object LowRam {
         am.getMemoryInfo(info)
         totalMemMb = info.totalMem / (1024 * 1024)
         heapClassMb = am.memoryClass
-        if (totalMemMb in 1..2048) isLowRam = true
+        // Some TV firmware reports ample physical RAM but caps each app to a
+        // 256 MB heap. Treat the process heap limit as the decisive constraint.
+        if (totalMemMb in 1..2048 || heapClassMb <= 256) isLowRam = true
     }
 
     fun below3Gb(): Boolean = totalMemMb in 1..3072

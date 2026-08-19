@@ -15,12 +15,13 @@ import javax.inject.Singleton
 @Singleton
 class CatchupUrlBuilder @Inject constructor() {
 
-    fun build(channel: Channel, program: Program, playlist: Playlist?): String? {
+    fun build(channel: Channel, program: Program, playlist: Playlist?, allowInProgress: Boolean = false): String? {
         if (!channel.catchup && channel.catchupSource.isBlank() && playlist?.type != PlaylistType.XTREAM) {
             return null
         }
         val now = System.currentTimeMillis()
-        if (program.endMs >= now) return null
+        if (!allowInProgress && program.endMs >= now) return null
+        if (program.startMs >= now) return null
         val windowDays = channel.catchupDays.takeIf { it > 0 } ?: 7
         if (now - program.endMs > TimeUnit.DAYS.toMillis(windowDays.toLong())) return null
 
@@ -55,9 +56,10 @@ class CatchupUrlBuilder @Inject constructor() {
         return "${base}${sep}utc=${program.startMs / 1000}&lutc=${program.endMs / 1000}"
     }
 
-    fun isEligible(channel: Channel, program: Program, now: Long = System.currentTimeMillis()): Boolean {
+    fun isEligible(channel: Channel, program: Program, now: Long = System.currentTimeMillis(), allowInProgress: Boolean = false): Boolean {
         if (!channel.catchup && channel.catchupSource.isBlank()) return false
-        if (program.endMs >= now) return false
+        if (!allowInProgress && program.endMs >= now) return false
+        if (program.startMs >= now) return false
         val days = channel.catchupDays.takeIf { it > 0 } ?: 7
         return now - program.endMs <= TimeUnit.DAYS.toMillis(days.toLong())
     }

@@ -15,7 +15,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -119,7 +119,11 @@ class PlayerManager @Inject constructor(
         player.playWhenReady = true
     }
 
-    fun previewPlayer(url: String, headers: Map<String, String>): ExoPlayer? {
+    fun previewPlayer(
+        url: String,
+        headers: Map<String, String>,
+        autoPlay: Boolean = settings.settings.value.autoplayPreview,
+    ): ExoPlayer? {
         if (!settings.settings.value.preview) return null
         if (budget.mode == PlayerBudget.Mode.MULTIVIEW) return null
         if (!budget.acquirePreview()) return null
@@ -127,7 +131,7 @@ class PlayerManager @Inject constructor(
         p.volume = 0f
         p.setMediaItem(mediaItem(url, "preview", headers))
         p.prepare()
-        p.playWhenReady = settings.settings.value.autoplayPreview
+        p.playWhenReady = autoPlay
         return p
     }
 
@@ -142,6 +146,9 @@ class PlayerManager @Inject constructor(
 
     fun createMultiView(count: Int): List<ExoPlayer> {
         releasePreview()
+        // Multi-view owns the decoder budget. Release a fullscreen decoder first
+        // so navigation from Player cannot race the new tile players.
+        if (budget.mode == PlayerBudget.Mode.FULLSCREEN) releaseMain()
         val granted = budget.acquireMultiView(count)
         if (granted == 0) return emptyList()
         releaseMultiViewInternal(keepBudget = true)
@@ -149,6 +156,17 @@ class PlayerManager @Inject constructor(
             multi += buildPlayer(preview = true)
         }
         return multi.toList()
+    }
+
+    fun playMultiView(
+        player: ExoPlayer,
+        url: String,
+        title: String,
+        headers: Map<String, String>,
+    ) {
+        player.setMediaItem(mediaItem(url, title, headers))
+        player.prepare()
+        player.playWhenReady = true
     }
 
     fun dropMultiViewTo(n: Int) {
@@ -178,10 +196,29 @@ class PlayerManager @Inject constructor(
     }
 
     fun releaseMain() {
-        main?.release()
+        main?.runCatching {
+            stop()
+            clearVideoSurface()
+            clearMediaItems()
+            release()
+        }
         main = null
+        _isPlaying.value = false
+        _target.value = null
         _preferredDisplayModeId.value = 0
         budget.releaseFullscreen()
+    }
+
+    fun currentPreviewPlayer(): ExoPlayer? = preview
+
+    /** Frees decoder/buffer pressure immediately while navigation disposes the view. */
+    fun stopMain() {
+        main?.runCatching {
+            playWhenReady = false
+            stop()
+            clearMediaItems()
+        }
+        _isPlaying.value = false
     }
 
     fun retry() {
@@ -236,6 +273,25 @@ class PlayerManager @Inject constructor(
             .build()
     }
 
+    fun selectVideo(groupIndex: Int, trackIndex: Int) {
+        val player = main ?: return
+        val groups = player.currentTracks.groups
+        if (groupIndex !in groups.indices) return
+        val group = groups[groupIndex]
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(
+                androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, trackIndex),
+            )
+            .build()
+    }
+
+    fun clearVideoOverride() {
+        val player = main ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+            .build()
+    }
+
     fun clearSubtitle() {
         val player = main ?: return
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
@@ -267,7 +323,11 @@ class PlayerManager @Inject constructor(
             OkHttpDataSource.Factory(okHttp)
         }
         http.setUserAgent("NOVA-IPTV")
-        val mediaSourceFactory = DefaultMediaSourceFactory(context).setDataSourceFactory(http)
+        // Recordings use file:// or content:// URIs, while provider streams use HTTP.
+        // DefaultDataSource selects the correct local source and delegates network
+        // requests to the shared OkHttp factory.
+        val dataSourceFactory = DefaultDataSource.Factory(context, http)
+        val mediaSourceFactory = DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory)
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
@@ -294,6 +354,7 @@ class PlayerManager @Inject constructor(
         val mime = when {
             url.contains(".mpd", true) -> MimeTypes.APPLICATION_MPD
             url.contains(".m3u8", true) -> MimeTypes.APPLICATION_M3U8
+            url.substringBefore('?').endsWith(".ts", true) -> MimeTypes.VIDEO_MP2T
             else -> null
         }
         val request = MediaItem.RequestMetadata.Builder()

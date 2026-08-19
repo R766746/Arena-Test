@@ -21,7 +21,6 @@ android {
         testInstrumentationRunner = "com.nova.iptv.NovaTestRunner"
         vectorDrawables.useSupportLibrary = true
 
-        buildConfigField("boolean", "SEED_DEMO", "true")
         buildConfigField("int", "QA_CHANNEL_COUNT", "0")
     }
 
@@ -84,6 +83,16 @@ android {
     }
 }
 
+composeCompiler {
+    reportsDestination = layout.buildDirectory.dir("compose_compiler")
+    metricsDestination = layout.buildDirectory.dir("compose_compiler")
+}
+
+ksp {
+    arg("room.schemaLocation", file("schemas").path)
+    arg("room.generateKotlin", "true")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -124,7 +133,10 @@ dependencies {
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    implementation(libs.room.paging)
     ksp(libs.room.compiler)
+    implementation(libs.paging.runtime)
+    implementation(libs.paging.compose)
 
     implementation(libs.navigation.compose)
     implementation(libs.datastore.preferences)
@@ -147,7 +159,6 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.documentfile)
 
-    debugImplementation(libs.leakcanary)
     baselineProfile(project(":baselineprofile"))
 
     testImplementation(libs.junit)

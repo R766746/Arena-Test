@@ -151,6 +151,7 @@ data class ChannelFts(
         Index("channelId"),
         Index(value = ["startMs", "endMs"]),
         Index("title"),
+        Index(value = ["sourceId", "syncToken"]),
     ],
 )
 data class ProgramEntity(
@@ -163,6 +164,8 @@ data class ProgramEntity(
     val startMs: Long,
     val endMs: Long,
     val catchup: Boolean,
+    val sourceId: String = "",
+    val syncToken: String = "",
 ) {
     fun toModel() = Program(id, channelId, title, description, category, startMs, endMs, catchup)
 

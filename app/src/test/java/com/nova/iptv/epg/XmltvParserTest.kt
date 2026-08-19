@@ -8,6 +8,7 @@ import com.nova.iptv.data.epg.XmltvParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayInputStream
 
 class XmltvParserTest {
     @Test
@@ -37,6 +38,34 @@ class XmltvParserTest {
         val base = TimeFmt.xmltvToEpoch("20240101120000 +0000")
         val first = shifted.programmes.first { it.title == "World Briefing" }
         assertEquals(base + 2 * 3_600_000L, first.startMs)
+    }
+
+    @Test
+    fun rejectsDoctypeAndExternalEntities() {
+        val xml = """<!DOCTYPE tv [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><tv><channel id="x"><display-name>&xxe;</display-name></channel></tv>"""
+        val result = runCatching { XmltvParser.parse(ByteArrayInputStream(xml.toByteArray())) }
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun rejectsOversizedDecompressedFeed() {
+        val xml = "<tv><channel id=\"x\"><display-name>Channel</display-name></channel></tv>"
+        val result = runCatching {
+            XmltvParser.parse(
+                ByteArrayInputStream(xml.toByteArray()),
+                maxUncompressedBytes = 24,
+            )
+        }
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun rejectsExcessiveProgrammeCount() {
+        val xml = """<tv><channel id="x"><display-name>X</display-name></channel><programme channel="x" start="20240101120000 +0000" stop="20240101130000 +0000"><title>One</title></programme><programme channel="x" start="20240101130000 +0000" stop="20240101140000 +0000"><title>Two</title></programme></tv>"""
+        val result = runCatching {
+            XmltvParser.parse(ByteArrayInputStream(xml.toByteArray()), maxProgrammes = 1)
+        }
+        assertTrue(result.isFailure)
     }
 }
 

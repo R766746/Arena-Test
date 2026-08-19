@@ -4,10 +4,14 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Original NOVA mark: a strong N silhouette wrapped around a play core. -->
     <path
-        android:fillColor="#3D8BFD"
-        android:pathData="M34,32h6v44h-6z" />
+        android:fillColor="#20D6F5"
+        android:pathData="M27,28h13l28,35v-35h13v52h-13l-28,-35v35h-13z" />
     <path
-        android:fillColor="#F2F4F8"
-        android:pathData="M46,36h5v36h-5zM54,36h18c9,0 14,5 14,13s-5,13 -14,13h-13v10h-5zM59,41v16h12c5.5,0 8.5,-2.5 8.5,-8s-3,-8 -8.5,-8z" />
+        android:fillColor="#F7FAFF"
+        android:pathData="M47,45l17,9 -17,9z" />
+    <path
+        android:fillColor="#3478F6"
+        android:pathData="M68,28h13v52h-13z" />
 </vector>

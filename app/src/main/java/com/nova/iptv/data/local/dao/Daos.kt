@@ -6,6 +6,9 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.RawQuery
+import androidx.paging.PagingSource
+import androidx.sqlite.db.SupportSQLiteQuery
 import com.nova.iptv.data.local.entity.ChannelEntity
 import com.nova.iptv.data.local.entity.DiagnosticsEntity
 import com.nova.iptv.data.local.entity.EpgSourceEntity
@@ -41,11 +44,31 @@ interface PlaylistDao {
 
 @Dao
 interface ChannelDao {
+    data class GroupCount(val name: String, val count: Int)
+
+    @RawQuery(observedEntities = [ChannelEntity::class, WatchHistoryEntity::class])
+    fun pagingSource(query: SupportSQLiteQuery): PagingSource<Int, ChannelEntity>
+
     @Query("SELECT * FROM channels WHERE playlistId = :playlistId AND hidden = 0 ORDER BY userOrder, number, name")
     fun observeByPlaylist(playlistId: String): Flow<List<ChannelEntity>>
 
     @Query("SELECT * FROM channels WHERE playlistId = :playlistId AND hidden = 0 ORDER BY userOrder, number, name")
     suspend fun byPlaylist(playlistId: String): List<ChannelEntity>
+
+    @Query("SELECT * FROM channels WHERE playlistId = :playlistId AND hidden = 0 ORDER BY userOrder, number, name LIMIT :limit")
+    suspend fun byPlaylistLimited(playlistId: String, limit: Int): List<ChannelEntity>
+
+    @Query("SELECT groupName AS name, COUNT(*) AS count FROM channels WHERE playlistId = :playlistId AND hidden = 0 AND groupName != '' GROUP BY groupName ORDER BY MIN(pk)")
+    fun observeGroupCounts(playlistId: String): Flow<List<GroupCount>>
+
+    @Query("SELECT COUNT(*) FROM channels WHERE playlistId = :playlistId AND hidden = 0")
+    fun observeCount(playlistId: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM channels WHERE playlistId = :playlistId AND favorite = 1 AND hidden = 0")
+    fun observeFavoriteCount(playlistId: String): Flow<Int>
+
+    @Query("SELECT COUNT(DISTINCT c.id) FROM channels c INNER JOIN watch_history h ON h.refId = c.id WHERE c.playlistId = :playlistId AND c.hidden = 0 AND h.kind = 'LIVE'")
+    fun observeRecentCount(playlistId: String): Flow<Int>
 
     @Query("SELECT * FROM channels WHERE playlistId = :playlistId AND groupName = :group AND hidden = 0 ORDER BY userOrder, number, name")
     fun observeByGroup(playlistId: String, group: String): Flow<List<ChannelEntity>>
@@ -176,6 +199,14 @@ interface ProgramDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(items: List<ProgramEntity>)
 
+    @Query(
+        """
+        DELETE FROM programs
+        WHERE sourceId = :sourceId AND syncToken != :syncToken AND startMs >= :fromMs
+        """,
+    )
+    suspend fun deleteStaleFutureForSource(sourceId: String, syncToken: String, fromMs: Long): Int
+
     @Query("DELETE FROM programs WHERE channelId = :channelId")
     suspend fun deleteForChannel(channelId: String)
 
@@ -191,10 +222,32 @@ interface ProgramDao {
 
 @Dao
 interface VodDao {
-    @Query("SELECT * FROM vod WHERE playlistId = :playlistId AND kind = :kind ORDER BY title")
+    data class GroupCount(val name: String, val count: Int)
+
+    @RawQuery(observedEntities = [VodEntity::class])
+    fun pagingSource(query: SupportSQLiteQuery): PagingSource<Int, VodEntity>
+
+    @Query(
+        """
+        SELECT genresCsv AS name, COUNT(*) AS count
+        FROM vod
+        WHERE playlistId = :playlistId AND kind = :kind AND genresCsv != ''
+        GROUP BY genresCsv
+        ORDER BY MIN(pk)
+        """,
+    )
+    fun observeGroupCounts(playlistId: String, kind: String): Flow<List<GroupCount>>
+
+    @Query("SELECT COUNT(*) FROM vod WHERE playlistId = :playlistId AND kind = :kind AND watchlist = 1")
+    fun observeWatchlistCount(playlistId: String, kind: String): Flow<Int>
+
+    @Query("SELECT id FROM vod WHERE playlistId = :playlistId AND watchlist = 1")
+    suspend fun watchlistIds(playlistId: String): List<String>
+
+    @Query("SELECT * FROM vod WHERE playlistId = :playlistId AND kind = :kind ORDER BY pk")
     fun observe(playlistId: String, kind: String): Flow<List<VodEntity>>
 
-    @Query("SELECT * FROM vod WHERE playlistId = :playlistId AND kind = :kind ORDER BY title")
+    @Query("SELECT * FROM vod WHERE playlistId = :playlistId AND kind = :kind ORDER BY pk")
     suspend fun byKind(playlistId: String, kind: String): List<VodEntity>
 
     @Query("SELECT * FROM vod WHERE id = :id LIMIT 1")
@@ -243,6 +296,14 @@ interface VodDao {
         obsolete.chunked(SQL_BATCH_SIZE).forEach { deleteByIds(it) }
     }
 
+    @Transaction
+    suspend fun replacePlaylistVod(playlistId: String, items: List<VodEntity>) {
+        deleteByPlaylist(playlistId)
+        items.chunked(SQL_BATCH_SIZE).forEach { chunk ->
+            upsertAll(chunk.map { it.copy(pk = 0) })
+        }
+    }
+
     @Query("SELECT DISTINCT genresCsv FROM vod WHERE playlistId = :playlistId AND kind = :kind")
     suspend fun genreRows(playlistId: String, kind: String): List<String>
 }
@@ -275,6 +336,9 @@ interface RecordingDao {
 
     @Query("SELECT * FROM recordings WHERE id = :id LIMIT 1")
     suspend fun byId(id: String): RecordingEntity?
+
+    @Query("SELECT * FROM recordings WHERE channelId = :channelId AND programId = :programId AND status IN ('SCHEDULED', 'RECORDING') LIMIT 1")
+    suspend fun activeForProgram(channelId: String, programId: String): RecordingEntity?
 
     @Query("SELECT * FROM recordings WHERE status = :status ORDER BY startMs")
     suspend fun byStatus(status: String): List<RecordingEntity>

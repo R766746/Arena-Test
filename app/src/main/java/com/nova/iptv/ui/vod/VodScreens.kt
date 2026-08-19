@@ -21,6 +21,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -44,6 +46,7 @@ import com.nova.iptv.domain.model.Episode
 import com.nova.iptv.domain.model.VodItem
 import com.nova.iptv.domain.model.VodKind
 import com.nova.iptv.domain.model.PlaylistType
+import com.nova.iptv.domain.model.PosterSize
 import com.nova.iptv.nav.PlayTarget
 import com.nova.iptv.nav.TvLazyColumn
 import com.nova.iptv.nav.TvLazyVerticalGrid
@@ -119,7 +122,8 @@ class DetailViewModel @Inject constructor(
                     description = info.plot.orEmpty().ifBlank { vod.description },
                     cast = info.cast.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { vod.cast },
                     director = info.director.orEmpty().ifBlank { vod.director },
-                    genres = info.genre.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { vod.genres },
+                    // `genres` stores the provider category used by Home grouping.
+                    // Detail metadata must not replace it with Action/Thriller/etc.
                     durationMin = durationMinutes(info.duration).takeIf { it > 0 } ?: vod.durationMin,
                     posterUrl = info.movie_image.orEmpty().ifBlank { vod.posterUrl },
                     backdropUrl = info.backdrop_path?.firstOrNull().orEmpty().ifBlank { vod.backdropUrl },
@@ -134,7 +138,7 @@ class DetailViewModel @Inject constructor(
                     description = info?.plot.orEmpty().ifBlank { vod.description },
                     cast = info?.cast.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { vod.cast },
                     director = info?.director.orEmpty().ifBlank { vod.director },
-                    genres = info?.genre.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { vod.genres },
+                    // Keep the provider category stable; Xtream detail genres are metadata.
                     posterUrl = info?.cover.orEmpty().ifBlank { vod.posterUrl },
                     backdropUrl = info?.backdrop_path?.firstOrNull().orEmpty().ifBlank { vod.backdropUrl },
                     rating = info?.rating.orEmpty().ifBlank { vod.rating },
@@ -209,14 +213,14 @@ class DetailViewModel @Inject constructor(
 fun MoviesRoute(onDetail: (String) -> Unit, onBack: () -> Unit, vm: VodGridViewModel = hiltViewModel()) {
     val items by vm.movies.collectAsStateWithLifecycle()
     val settings by vm.clock24h.collectAsStateWithLifecycle()
-    VodGridScreen(stringResource(R.string.cat_movies), items, settings.clock24h, onDetail, onBack)
+    VodGridScreen(stringResource(R.string.cat_movies), items, settings.clock24h, settings.posterSize, onDetail, onBack)
 }
 
 @Composable
 fun SeriesRoute(onDetail: (String) -> Unit, onBack: () -> Unit, vm: VodGridViewModel = hiltViewModel()) {
     val items by vm.series.collectAsStateWithLifecycle()
     val settings by vm.clock24h.collectAsStateWithLifecycle()
-    VodGridScreen(stringResource(R.string.cat_series), items, settings.clock24h, onDetail, onBack)
+    VodGridScreen(stringResource(R.string.cat_series), items, settings.clock24h, settings.posterSize, onDetail, onBack)
 }
 
 @Composable
@@ -224,10 +228,16 @@ fun VodGridScreen(
     title: String,
     items: List<VodItem>,
     clock24h: Boolean,
+    posterSize: PosterSize,
     onDetail: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val colors = LocalNovaPalette.current
+    val posterWidth = when (posterSize) {
+        PosterSize.SMALL -> 112.dp
+        PosterSize.MEDIUM -> 132.dp
+        PosterSize.LARGE -> 156.dp
+    }
     var focused by remember { mutableStateOf<VodItem?>(null) }
     val fade by animateFloatAsState(if (focused?.backdropUrl.isNullOrBlank()) 0f else 1f, label = "bd")
     Box(Modifier.fillMaxSize().background(colors.background)) {
@@ -241,11 +251,11 @@ fun VodGridScreen(
                 EmptyState(stringResource(R.string.empty_movies), stringResource(R.string.empty_channels_hint))
             } else {
                 TvLazyVerticalGrid(
-                    columns = GridCells.Fixed(6),
+                    columns = GridCells.Adaptive(posterWidth),
                     modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
                     contentPadding = PaddingValues(12.dp),
                 ) {
-                    items(items.size, key = { items[it].id }) { idx ->
+                    items(items.size, key = { items[it].id }, contentType = { "poster" }) { idx ->
                         val item = items[idx]
                         PosterCard(
                             title = item.title,
@@ -254,6 +264,7 @@ fun VodGridScreen(
                             progress = 0f,
                             onClick = { onDetail(item.id) },
                             modifier = Modifier.padding(6.dp),
+                            posterWidth = posterWidth,
                         )
                     }
                 }
@@ -274,6 +285,10 @@ fun DetailRoute(
     androidx.compose.runtime.LaunchedEffect(id) { vm.load(id) }
     val item = vm.item
     val colors = LocalNovaPalette.current
+    val playFocus = remember { FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(item?.id) {
+        if (item != null) playFocus.requestFocus()
+    }
     Box(Modifier.fillMaxSize().background(colors.background)) {
         if (item?.backdropUrl?.isNotBlank() == true) {
             AsyncImage(item.backdropUrl, null, Modifier.fillMaxSize().alpha(0.22f), contentScale = ContentScale.Crop)
@@ -286,9 +301,14 @@ fun DetailRoute(
         Column(Modifier.padding(36.dp)) {
             NovaTopBar(true)
             Row {
-                PosterCard(item.title, item.year, item.posterUrl, 0f, onClick = {
-                    onPlay(if (item.kind == VodKind.MOVIE) PlayTarget.vod(item.id, item.title, item.streamUrl) else PlayTarget.episode(vm.episodes.firstOrNull()?.id.orEmpty(), item.title, vm.episodes.firstOrNull()?.streamUrl))
-                })
+                PosterCard(
+                    item.title,
+                    item.year,
+                    item.posterUrl,
+                    0f,
+                    onClick = {},
+                    focusable = false,
+                )
                 Spacer(Modifier.width(24.dp))
                 Column(Modifier.weight(1f)) {
                     Text(item.title, color = colors.onBackground, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
@@ -304,8 +324,14 @@ fun DetailRoute(
                     Text(item.description, color = colors.onBackground, fontSize = 14.sp)
                     Spacer(Modifier.height(16.dp))
                     Row {
-                        FocusButton(label = stringResource(R.string.play), onClick = {
-                            onPlay(PlayTarget.vod(item.id, item.title, item.streamUrl))
+                        FocusButton(label = stringResource(R.string.play), modifier = Modifier.focusRequester(playFocus), onClick = {
+                            if (item.kind == VodKind.SERIES) {
+                                vm.episodes.firstOrNull()?.let { first ->
+                                    onPlay(PlayTarget.episode(first.id, first.title, first.streamUrl))
+                                }
+                            } else {
+                                onPlay(PlayTarget.vod(item.id, item.title, item.streamUrl))
+                            }
                         })
                         Spacer(Modifier.width(8.dp))
                         FocusButton(label = if (item.watchlist) stringResource(R.string.watchlist_added) else stringResource(R.string.watchlist), onClick = vm::toggleWatchlist)
@@ -318,7 +344,7 @@ fun DetailRoute(
                 Spacer(Modifier.height(20.dp))
                 Text(stringResource(R.string.season, 1), color = colors.onBackground, fontSize = 16.sp)
                 TvLazyColumn(Modifier.height(220.dp)) {
-                    items(vm.episodes, key = { it.id }) { ep ->
+                    items(vm.episodes, key = { it.id }, contentType = { "episode" }) { ep ->
                         FocusButton(
                             label = stringResource(R.string.episode_n, ep.episode, ep.title),
                             onClick = { onPlay(PlayTarget.episode(ep.id, ep.title, ep.streamUrl)) },
