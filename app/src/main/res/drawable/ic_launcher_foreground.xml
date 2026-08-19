@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Original NOVA mark: a strong N silhouette wrapped around a play core. -->
+    <path
+        android:fillColor="#20D6F5"
+        android:pathData="M27,28h13l28,35v-35h13v52h-13l-28,-35v35h-13z" />
+    <path
+        android:fillColor="#F7FAFF"
+        android:pathData="M47,45l17,9 -17,9z" />
+    <path
+        android:fillColor="#3478F6"
+        android:pathData="M68,28h13v52h-13z" />
+</vector>
