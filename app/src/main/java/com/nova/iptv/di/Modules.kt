@@ -3,6 +3,7 @@ package com.nova.iptv.di
 import android.content.Context
 import androidx.room.Room
 import coil.ImageLoader
+import com.nova.iptv.BuildConfig
 import com.nova.iptv.core.perf.CoilConfig
 import com.nova.iptv.data.epg.EpgRepository
 import com.nova.iptv.data.epg.EpgRepositoryImpl
@@ -50,7 +51,13 @@ object NetworkModule {
     @Singleton
     fun okHttp(): OkHttpClient {
         val log = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BASIC
+            // Xtream credentials are encoded in provider request URLs. Never emit
+            // request URLs in release builds.
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BASIC
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
         }
         return OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)

@@ -1,5 +1,6 @@
 package com.nova.iptv.ui.playlist
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -122,9 +124,20 @@ fun AddPlaylistRoute(
     vm: AddPlaylistViewModel = hiltViewModel(),
 ) {
     val colors = LocalNovaPalette.current
+    val context = LocalContext.current
     var mode by rememberSaveable { mutableStateOf(AddMode.PICK) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri?.let { vm.importFile("File playlist", it.toString(), onDone) }
+        uri?.let {
+            // OpenDocument grants a temporary read permission by default. Persist it
+            // before the import so scheduled refreshes still work after process death.
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            vm.importFile("File playlist", it.toString(), onDone)
+        }
     }
 
     Box(

@@ -2,10 +2,12 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="nova_vault.xml" />
+        <exclude domain="sharedpref" path="nova_vault_fallback.xml" />
         <exclude domain="sharedpref" path="nova_pin.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="nova_vault.xml" />
+        <exclude domain="sharedpref" path="nova_vault_fallback.xml" />
         <exclude domain="sharedpref" path="nova_pin.xml" />
     </device-transfer>
 </data-extraction-rules>
