@@ -1,0 +1,6 @@
+#EXTM3U
+#EXTINF:-1,Plain Channel
+http://cdn.example/plain.ts
+#EXTGRP:General
+#EXTINF:-1,Another
+http://cdn.example/another.ts

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="cnn.us">
+    <display-name>CNN HD</display-name>
+    <display-name>CNN</display-name>
+  </channel>
+  <channel id="bbc.uk">
+    <display-name>BBC World</display-name>
+  </channel>
+  <programme start="20240101120000 +0000" stop="20240101130000 +0000" channel="cnn.us">
+    <title>World Briefing</title>
+    <desc>Hourly news.</desc>
+    <category>News</category>
+  </programme>
+  <programme start="20240101130000 +0000" stop="20240101133000 +0000" channel="cnn.us">
+    <title>Markets</title>
+    <desc>Markets open.</desc>
+  </programme>
+  <programme start="20240101120000 +0100" stop="20240101130000 +0100" channel="bbc.uk">
+    <title>Outlook</title>
+    <desc>From London.</desc>
+  </programme>
+</tv>

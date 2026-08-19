@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NOVA</string>
+    <string name="app_name_full">Nova IPTV</string>
+    <string name="app_mark">NOVA</string>
+
+    <!-- Categories -->
+    <string name="cat_live">Live TV</string>
+    <string name="cat_movies">Movies</string>
+    <string name="cat_series">Series</string>
+    <string name="cat_guide">TV Guide</string>
+    <string name="cat_recordings">Recordings</string>
+    <string name="cat_multiview">Multi-view</string>
+    <string name="cat_search">Search</string>
+    <string name="cat_settings">Settings</string>
+
+    <!-- Groups -->
+    <string name="group_favorites">Favorites</string>
+    <string name="group_all_channels">All Channels</string>
+    <string name="group_recent">Recently Watched</string>
+    <string name="group_all">All</string>
+    <string name="group_continue">Continue Watching</string>
+
+    <!-- Home / empty -->
+    <string name="empty_channels">No channels in this group yet.</string>
+    <string name="empty_channels_hint">Add a playlist or pick another group with the D-pad.</string>
+    <string name="empty_movies">No movies in this collection.</string>
+    <string name="empty_series">No series in this collection.</string>
+    <string name="empty_favorites">No favorites yet. Long-press a channel and choose Favorite.</string>
+    <string name="empty_history">Nothing watched yet. Press OK on a channel to start.</string>
+    <string name="empty_search">Type to search channels, programmes, movies and series.</string>
+    <string name="empty_search_none">No matches for “%1$s”.</string>
+    <string name="empty_recordings">No recordings scheduled. Open the guide and press Record on a programme.</string>
+    <string name="empty_epg">No programme data. Add an XMLTV source in Settings → EPG.</string>
+    <string name="cd_app_mark">NOVA home</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_logo">Channel logo</string>
+    <string name="cd_poster">Poster</string>
+    <string name="cd_play">Play</string>
+    <string name="cd_favorite">Favorite</string>
+    <string name="cd_menu">Options</string>
+    <string name="cd_search">Search</string>
+    <string name="cd_close">Close</string>
+    <string name="cd_preview">Live preview</string>
+
+    <!-- First run -->
+    <string name="first_run_title">Welcome to NOVA</string>
+    <string name="first_run_body">NOVA is a player only. Add a playlist from your IPTV provider to begin.</string>
+    <string name="first_run_add">Add a playlist</string>
+    <string name="welcome_subtitle">Welcome. Configure your stream.</string>
+    <string name="welcome_body">Choose your provider format. Your playlist credentials remain on this device.</string>
+    <string name="first_run_legal">You are responsible for the legality of any streams you add.</string>
+
+    <!-- Add playlist -->
+    <string name="add_playlist">Add playlist</string>
+    <string name="add_m3u_url">M3U URL</string>
+    <string name="add_xtream">Xtream Codes</string>
+    <string name="add_file">Local file</string>
+    <string name="field_name">Name</string>
+    <string name="field_url">Playlist URL</string>
+    <string name="field_epg_url">EPG URL (optional)</string>
+    <string name="field_user_agent">User-Agent</string>
+    <string name="field_portal">Portal</string>
+    <string name="field_username">Username</string>
+    <string name="field_password">Password</string>
+    <string name="action_import">Import</string>
+    <string name="action_pick_file">Choose file</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_retry">Retry</string>
+    <string name="progress_connecting">Connecting…</string>
+    <string name="progress_downloading">Downloading %1$d KB…</string>
+    <string name="progress_parsing">Parsing %1$d / %2$d…</string>
+    <string name="progress_saving">Saving to library…</string>
+    <string name="error_unknown_host">Could not resolve host. Check the URL and your network.</string>
+    <string name="error_unauthorized">Invalid credentials (401).</string>
+    <string name="error_empty_playlist">The playlist contained no channels.</string>
+    <string name="error_ssl">TLS handshake failed. The portal certificate may be invalid.</string>
+    <string name="error_generic">Could not import playlist: %1$s</string>
+    <string name="error_expired_xtream">Xtream credentials are invalid or expired.</string>
+    <string name="error_geo">This stream is not available in your region.</string>
+    <string name="xtream_invalid">invalid credentials</string>
+
+    <!-- Player -->
+    <string name="live_pill">LIVE</string>
+    <string name="catchup_pill">CATCH-UP</string>
+    <string name="vod_pill">VOD</string>
+    <string name="player_retry">Retry</string>
+    <string name="player_external">Open external player</string>
+    <string name="player_error">Playback failed</string>
+    <string name="player_no_timeshift">Provider does not support timeshift</string>
+    <string name="player_start_over">Start over</string>
+    <string name="overlay_favorite">Favorite</string>
+    <string name="overlay_multiview">Multi-view</string>
+    <string name="overlay_guide">TV Guide</string>
+    <string name="overlay_record">Record</string>
+    <string name="overlay_stop_recording">Stop recording</string>
+    <string name="player_recording_badge">● REC</string>
+    <string name="overlay_audio">Audio</string>
+    <string name="overlay_subtitles">Subtitles</string>
+    <string name="overlay_aspect">Aspect</string>
+    <string name="remaining">%1$s left</string>
+    <string name="next_program">Next: %1$s</string>
+    <string name="zap_hud">%1$d</string>
+
+    <!-- Channel actions -->
+    <string name="action_watch">Watch</string>
+    <string name="action_favorite_add">Favorite</string>
+    <string name="action_favorite_remove">Unfavorite</string>
+    <string name="action_open_guide">Open Guide</string>
+    <string name="action_record">Record</string>
+    <string name="action_hide">Hide</string>
+    <string name="action_assign_epg">Assign EPG</string>
+    <string name="channel_actions_title">Channel options</string>
+
+    <!-- Guide -->
+    <string name="program_info">Programme</string>
+    <string name="watch_live">Watch live</string>
+    <string name="play_catchup">Play catch-up</string>
+    <string name="remind">Remind</string>
+    <string name="catchup_badge">CATCH-UP</string>
+
+    <!-- Detail / VOD -->
+    <string name="play">Play</string>
+    <string name="watchlist">Watchlist</string>
+    <string name="watchlist_added">On watchlist</string>
+    <string name="rate">Rate</string>
+    <string name="more_like_this">More like this</string>
+    <string name="season">Season %1$d</string>
+    <string name="episode_n">E%1$02d  %2$s</string>
+    <string name="runtime_min">%1$d min</string>
+    <string name="year_rating">%1$d  ·  %2$s</string>
+
+    <!-- Settings sections -->
+    <string name="settings_title">Settings</string>
+    <string name="sec_playlists">Playlists</string>
+    <string name="sec_epg">EPG</string>
+    <string name="sec_appearance">Appearance</string>
+    <string name="sec_tv_guide">TV Guide</string>
+    <string name="sec_player">Player</string>
+    <string name="sec_parental">Parental</string>
+    <string name="sec_recordings">Recordings</string>
+    <string name="sec_general">General</string>
+    <string name="sec_about">About</string>
+    <string name="sec_diagnostics">Diagnostics</string>
+
+    <string name="playlists_add">Add playlist</string>
+    <string name="playlists_update_now">Update now</string>
+    <string name="playlists_delete">Delete</string>
+    <string name="playlist_delete_title">Delete playlist?</string>
+    <string name="playlist_delete_body">Remove %1$s and all of its saved channels, movies, series, and guide data?</string>
+    <string name="playlists_user_agent">User-Agent</string>
+    <string name="playlists_epg_sources">Assigned EPG sources</string>
+    <string name="playlists_interval">Auto-update interval (hours)</string>
+
+    <string name="epg_sources">Sources</string>
+    <string name="epg_interval">Refresh interval</string>
+    <string name="epg_past_days">Keep past days</string>
+    <string name="epg_timeshift">Time shift (hours)</string>
+    <string name="epg_update_start">Update on start</string>
+    <string name="epg_update_playlist">Update on playlist change</string>
+    <string name="epg_match_tools">Channel matching</string>
+    <string name="epg_prefer_logo">Prefer logos from</string>
+    <string name="epg_refresh_now">Refresh EPG now</string>
+
+    <string name="theme_midnight">Midnight</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_cinema">Cinema</string>
+    <string name="theme_light">Light</string>
+    <string name="accent_color">Accent</string>
+    <string name="appearance_theme">Theme</string>
+    <string name="font_scale">Text size</string>
+    <string name="poster_size">Poster size</string>
+    <string name="search_posters_hint">Search movies or series…</string>
+    <string name="sort_posters">Sort: %1$s</string>
+    <string name="list_style">List style</string>
+    <string name="logo_size">Logo size</string>
+    <string name="show_numbers">Channel numbers</string>
+    <string name="clock_24h">24-hour clock</string>
+    <string name="anim_speed">Animation</string>
+    <string name="panel_opacity">Panel opacity</string>
+
+    <string name="guide_hours">Timeline length</string>
+    <string name="guide_row_height">Row height</string>
+    <string name="guide_grid_lines">Grid lines</string>
+    <string name="guide_preview">Mini preview</string>
+    <string name="guide_autoplay">Autoplay preview</string>
+
+    <string name="player_overlay_timeout">Overlay timeout (sec)</string>
+    <string name="player_buffer">Buffer size</string>
+    <string name="player_afr">Auto frame rate</string>
+    <string name="player_aspect">Aspect</string>
+    <string name="player_seek">Seek step</string>
+    <string name="player_sub_size">Subtitle size</string>
+    <string name="player_external_pkg">External player package</string>
+
+    <string name="parental_enable">Enable PIN</string>
+    <string name="parental_change">Change PIN</string>
+    <string name="parental_lock_groups">Lock groups</string>
+    <string name="parental_lock_settings">Lock settings</string>
+    <string name="parental_enter_pin">Enter PIN</string>
+    <string name="parental_wrong">Incorrect PIN</string>
+    <string name="parental_set">Set a 4-digit PIN</string>
+    <string name="parental_set_default">Set PIN 0000</string>
+
+    <string name="rec_folder">Storage folder</string>
+    <string name="rec_padding">Padding (minutes)</string>
+    <string name="rec_delete_watched">Delete watched</string>
+    <string name="rec_quality_note">Recording quality equals the live stream. Fire Stick devices do not transcode.</string>
+    <string name="rec_no_space">Not enough free space (need ~1.5× estimated size).</string>
+    <string name="rec_scheduled">Scheduled</string>
+    <string name="rec_recording">Recording</string>
+    <string name="recording_delete_title">Delete recording?</string>
+    <string name="recording_delete_body">Remove %1$s? A completed recording file cannot be recovered.</string>
+    <string name="rec_completed">Completed</string>
+    <string name="rec_failed">Failed</string>
+    <string name="rec_pick_folder">Choose folder</string>
+    <string name="rec_use_app_folder">Use app storage</string>
+    <string name="rec_app_folder_selected">Current location: app Movies folder</string>
+    <string name="rec_external_folder_selected">Current location: selected external folder</string>
+    <string name="rec_folder_picker_unavailable">This TV has no compatible folder picker. Recordings use the app Movies folder.</string>
+    <string name="rec_cancel">Cancel</string>
+    <string name="recording_cancel_title">Cancel recording?</string>
+    <string name="recording_cancel_body">Stop and remove %1$s?</string>
+    <string name="recording_stop_title">Stop recording?</string>
+    <string name="recording_stop_body">Stop %1$s and keep the recorded content?</string>
+    <string name="recording_stop_action">Stop and save</string>
+    <string name="rec_starts_in">Starts in %1$s</string>
+    <string name="rec_elapsed">%1$s / %2$s</string>
+
+    <string name="startup_mode">Startup screen</string>
+    <string name="backup_export">Backup to file</string>
+    <string name="backup_import">Restore from file</string>
+    <string name="backup_omit_passwords">Omit passwords</string>
+    <string name="clear_cache">Clear image + EPG cache</string>
+    <string name="parental_locked_groups">Locked groups</string>
+    <string name="reset_settings">Reset settings</string>
+
+    <string name="about_version">Version %1$s (%2$d)</string>
+    <string name="about_player_only">NOVA is a player only and does not provide IPTV content.</string>
+    <string name="about_licenses">Open-source licenses</string>
+    <string name="about_memory">Device memory</string>
+    <string name="about_memory_status">RAM %1$s  lowRam=%2$b</string>
+    <string name="about_diagnostics">Diagnostics</string>
+
+    <string name="diag_heap">Heap</string>
+    <string name="diag_decoders">Decoder count</string>
+    <string name="diag_epg">Last EPG duration</string>
+    <string name="diag_playlist">Playlist size</string>
+
+    <string name="multiview_lowram">This device is low on RAM. 9-up is disabled; using 4 tiles.</string>
+    <string name="multiview_pick">Pick a channel</string>
+    <string name="multiview_pick_all">Choose a live channel</string>
+    <string name="multiview_picker_hint">All channels · OK to select · Back to cancel</string>
+    <string name="multiview_search_hint">Search 10,000+ channels… Press OK to type</string>
+    <string name="multiview_categories">LIVE TV CATEGORIES</string>
+    <string name="all_channels">All Channels</string>
+    <string name="clear_search">Clear search</string>
+    <string name="multiview_two_view">Two-channel view</string>
+    <string name="multiview_four_view">Four-channel view</string>
+    <string name="multiview_decoder_fallback">This TV could not start four hardware decoders. Switched safely to two-channel view.</string>
+    <string name="multiview_empty_tile">Press OK to choose a channel</string>
+    <string name="multiview_loading">Loading channel…</string>
+    <string name="multiview_stream_error">Channel unavailable · press OK for options</string>
+    <string name="multiview_audio_active">AUDIO</string>
+    <string name="multiview_tile_actions">TILE ACTIONS</string>
+    <string name="multiview_fullscreen">Full screen</string>
+    <string name="multiview_replace">Replace channel</string>
+    <string name="multiview_retry">Retry stream</string>
+    <string name="multiview_swap">Swap with adjacent tile</string>
+    <string name="multiview_remove">Remove from tile</string>
+    <string name="layout_2">2-up</string>
+    <string name="layout_4">4-up</string>
+    <string name="layout_9">9-up</string>
+
+    <string name="search_hint">Search titles, channels, programmes</string>
+    <string name="search_channels">Channels</string>
+    <string name="search_programs">On now / next</string>
+    <string name="search_movies">Movies</string>
+    <string name="search_series">Series</string>
+    <string name="voice_unavailable">Voice search is not available on this device.</string>
+
+    <string name="exit_title">Leave NOVA?</string>
+    <string name="exit_body">Choose Exit to close NOVA, or press Back to stay.</string>
+    <string name="exit_confirm">Exit</string>
+    <string name="exit_stay">Stay</string>
+
+    <string name="list_style_list">List</string>
+    <string name="list_style_compact">Compact</string>
+    <string name="list_style_logos">Logos</string>
+    <string name="buffer_small">Small</string>
+    <string name="buffer_medium">Medium</string>
+    <string name="buffer_large">Large</string>
+    <string name="aspect_fit">Fit</string>
+    <string name="aspect_16_9">16:9</string>
+    <string name="aspect_4_3">4:3</string>
+    <string name="aspect_fill">Fill</string>
+    <string name="anim_off">Off</string>
+    <string name="anim_normal">Normal</string>
+    <string name="anim_fast">Fast</string>
+    <string name="startup_home">Home</string>
+    <string name="startup_last">Last channel</string>
+    <string name="startup_favorites">Favorites</string>
+    <string name="startup_guide">TV Guide</string>
+    <string name="row_compact">Compact</string>
+    <string name="row_normal">Normal</string>
+    <string name="row_tall">Tall</string>
+
+    <string name="assign_epg_title">Assign EPG</string>
+    <string name="assign_epg_hint">Search XMLTV display names</string>
+
+    <string name="reminder_title">Starting soon</string>
+    <string name="reminder_body">%1$s begins in 2 minutes on %2$s.</string>
+</resources>

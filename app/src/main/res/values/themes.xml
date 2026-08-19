@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NovaIptv" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/nova_bg</item>
+        <item name="android:colorBackground">@color/nova_bg</item>
+        <item name="android:statusBarColor">@color/nova_bg</item>
+        <item name="android:navigationBarColor">@color/nova_bg</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:colorAccent">@color/nova_accent</item>
+        <item name="android:textColorPrimary">@color/nova_on_bg</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+</resources>
